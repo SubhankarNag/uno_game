@@ -7,6 +7,8 @@
 .game-page {
     min-height: 100vh;
     min-height: 100dvh;
+    height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -15,6 +17,10 @@
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior: none;
+    padding-top: env(safe-area-inset-top, 0);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-left: env(safe-area-inset-left, 0);
+    padding-right: env(safe-area-inset-right, 0);
 }
 
 /* ---- Top Bar ---- */
@@ -94,7 +100,6 @@
 .dir-arrow-path {
     stroke-dasharray: 70;
     stroke-dashoffset: 0;
-    filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.4));
 }
 
 .direction-arrow-wrap.anim-pulse .direction-arrow-svg {
@@ -249,7 +254,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 3rem;
+    gap: 4rem;
     padding: 1rem;
 }
 
@@ -600,13 +605,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    border-radius: 16px;
+    transition: box-shadow 0.3s ease;
 }
 
 /* ---- Wild Color Glow on Discard ---- */
-.discard-pile-container.glow-red { filter: drop-shadow(0 0 15px rgba(237, 28, 36, 0.6)); }
-.discard-pile-container.glow-blue { filter: drop-shadow(0 0 15px rgba(0, 114, 188, 0.6)); }
-.discard-pile-container.glow-green { filter: drop-shadow(0 0 15px rgba(0, 166, 81, 0.6)); }
-.discard-pile-container.glow-yellow { filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.6)); }
+.discard-pile-container.glow-red { box-shadow: 0 0 20px 5px rgba(237, 28, 36, 0.5); }
+.discard-pile-container.glow-blue { box-shadow: 0 0 20px 5px rgba(0, 114, 188, 0.5); }
+.discard-pile-container.glow-green { box-shadow: 0 0 20px 5px rgba(0, 166, 81, 0.5); }
+.discard-pile-container.glow-yellow { box-shadow: 0 0 20px 5px rgba(255, 215, 0, 0.5); }
 
 /* ---- Last Player Pill ---- */
 .last-player-pill {
@@ -631,8 +638,8 @@
 }
 
 @keyframes drawGlow {
-    0%, 100% { box-shadow: 0 0 10px rgba(255,215,0,0.3); filter: drop-shadow(0 0 8px rgba(255,215,0,0.3)); }
-    50% { box-shadow: 0 0 25px rgba(255,215,0,0.6); filter: drop-shadow(0 0 18px rgba(255,215,0,0.5)); }
+    0%, 100% { box-shadow: 0 0 10px rgba(255,215,0,0.3); }
+    50% { box-shadow: 0 0 25px rgba(255,215,0,0.6); }
 }
 
 /* ---- Card Count Badge Colors ---- */
@@ -1422,7 +1429,7 @@
     }
 
     .table-center {
-        gap: 1.5rem;
+        gap: 2.5rem;
         padding: 0.5rem;
     }
 
@@ -1589,7 +1596,7 @@
     }
 
     .table-center {
-        gap: 0.8rem;
+        gap: 1.5rem;
         padding: 0.2rem;
         flex: 1;
         min-height: 0;
@@ -1938,7 +1945,7 @@
     }
 
     .table-center {
-        gap: 0.6rem;
+        gap: 1rem;
     }
 
     .btn-uno {

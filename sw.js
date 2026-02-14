@@ -1,5 +1,5 @@
 // UNO Online — Service Worker
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 const CACHE_NAME = 'uno-game-v' + CACHE_VERSION;
 const ASSETS_TO_CACHE = [
     './',

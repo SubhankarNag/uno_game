@@ -273,6 +273,7 @@
     margin-left: -30px;
     transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
     clip-path: inset(0 30px 0 0);
+    contain: layout style;
 }
 
 .hand-container .uno-card:first-child {

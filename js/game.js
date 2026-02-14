@@ -123,6 +123,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Skeleton fallback: if no room data after 5s, force a re-fetch
+    setTimeout(() => {
+        if (!currentGameState) {
+            showGameToast('Loading game...', 'info');
+            // Re-subscribe to force fresh data
+            if (unsubRoom) unsubRoom();
+            unsubRoom = FirebaseSync.listenToRoom(roomCode, {
+                onRoomUpdate: handleRoomUpdate,
+                onRoomDeleted: () => {
+                    showGameToast('Room was deleted', 'error');
+                    setTimeout(() => window.location.href = 'index.html', 2000);
+                }
+            });
+        }
+    }, 5000);
+
     // Setup presence
     FirebaseSync.setupPresence(roomCode, playerId);
 
@@ -162,7 +178,8 @@ function handleRoomUpdate(room) {
     }
 
     if (room.status === 'waiting') {
-        // Game ended, back to lobby
+        // Game not started yet or ended back to waiting — redirect to lobby
+        window.location.href = 'index.html';
         return;
     }
 
