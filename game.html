@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNO — Game</title>
+    <meta name="description" content="UNO online game board — play cards, call UNO, and win!">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/cards.css">
+    <link rel="stylesheet" href="css/game.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎴</text></svg>">
+</head>
+<body class="game-page">
+
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <div class="top-bar-left">
+            <span class="top-bar-logo">UNO</span>
+            <span class="room-code-badge" id="gameRoomCode" onclick="copyCode()">------</span>
+        </div>
+        <div class="top-bar-center">
+            <span class="direction-indicator" id="directionIndicator">🔄</span>
+            <span id="turnLabel">Turn: —</span>
+            <div class="current-color-dot" id="currentColorDot"></div>
+            <div class="turn-timer" id="turnTimer">
+                <svg viewBox="0 0 36 36" class="timer-ring">
+                    <circle cx="18" cy="18" r="16" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
+                    <circle class="timer-progress" id="timerProgress" cx="18" cy="18" r="16" fill="none" stroke="var(--uno-yellow)" stroke-width="3" stroke-dasharray="100.53" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+                </svg>
+                <span class="timer-text" id="timerText">30</span>
+            </div>
+        </div>
+        <div class="top-bar-right">
+            <button class="btn-icon" id="btnSound" onclick="toggleSound()" title="Toggle Sound">🔊</button>
+            <button class="btn-icon" onclick="shareRoom()" title="Share Room">🔗</button>
+            <button class="btn-leave" onclick="handleLeave()">Leave</button>
+        </div>
+    </div>
+
+    <!-- Opponents -->
+    <div class="opponents-area" id="opponentsArea"></div>
+
+    <!-- Center Table -->
+    <div class="table-center">
+        <div class="pile-wrapper">
+            <div class="draw-pile-container" id="drawPile" onclick="handleDraw()">
+                <div class="uno-card card-back pile-card">
+                    <div class="card-inner"></div>
+                    <div class="card-back-design"><span>UNO</span></div>
+                </div>
+                <span class="pile-count" id="drawPileCount">0</span>
+            </div>
+            <span class="pile-label">Draw</span>
+        </div>
+
+        <div class="pile-wrapper">
+            <div class="discard-pile-container" id="discardPile"></div>
+            <span class="pile-label">Discard</span>
+        </div>
+    </div>
+
+    <!-- Action Log -->
+    <div class="action-log" id="actionLog"></div>
+
+    <!-- Player Hand -->
+    <div class="player-hand-area">
+        <div class="hand-info">
+            <div class="hand-info-left">
+                <span class="player-self-name" id="playerSelfName"></span>
+                <span class="your-turn-badge" id="yourTurnBadge">⚡ Your Turn</span>
+            </div>
+            <span class="card-count-label" id="cardCountLabel">0 cards</span>
+        </div>
+        <div class="emoji-bar" id="emojiBar">
+            <button onclick="sendEmoji('😂')">😂</button>
+            <button onclick="sendEmoji('😡')">😡</button>
+            <button onclick="sendEmoji('👏')">👏</button>
+            <button onclick="sendEmoji('💀')">💀</button>
+            <button onclick="sendEmoji('🔥')">🔥</button>
+            <button onclick="sendEmoji('😎')">😎</button>
+        </div>
+        <div class="hand-container" id="playerHand"></div>
+        <button class="btn-pass" id="btnPass" onclick="handlePass()">Pass Turn</button>
+    </div>
+
+    <!-- UNO Button -->
+    <div class="uno-btn-container">
+        <button class="btn-uno" id="btnUno" onclick="handleUno()">UNO!</button>
+    </div>
+
+    <!-- Color Picker -->
+    <div class="color-picker-overlay" id="colorPickerOverlay">
+        <div class="color-picker">
+            <h3>Choose a Color</h3>
+            <div class="color-options">
+                <div class="color-option opt-red" onclick="handleColorChoice('red')"></div>
+                <div class="color-option opt-blue" onclick="handleColorChoice('blue')"></div>
+                <div class="color-option opt-green" onclick="handleColorChoice('green')"></div>
+                <div class="color-option opt-yellow" onclick="handleColorChoice('yellow')"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat -->
+    <button class="btn-chat-toggle" id="btnChatToggle" onclick="toggleChat()">💬<span class="chat-unread" id="chatUnread"></span></button>
+    <div class="chat-overlay" id="chatOverlay" onclick="toggleChat()"></div>
+    <div class="chat-panel" id="chatPanel">
+        <div class="chat-header"><span>💬 Chat</span><button class="chat-close" onclick="toggleChat()">✕</button></div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-row">
+            <input type="text" id="chatInput" placeholder="Type a message..." maxlength="100" autocomplete="off">
+            <button class="chat-send" onclick="sendChatMsg()">➤</button>
+        </div>
+    </div>
+
+    <!-- Floating Emojis -->
+    <div class="floating-emojis" id="floatingEmojis"></div>
+
+    <!-- Confetti -->
+    <canvas class="confetti-canvas" id="confettiCanvas"></canvas>
+
+    <!-- Game Over -->
+    <div class="game-over-overlay" id="gameOverOverlay">
+        <div class="game-over-card">
+            <h2>🏆 Game Over!</h2>
+            <p class="winner-name" id="winnerName">—</p>
+            <table class="scores-table" id="scoresTable">
+                <thead>
+                    <tr><th>Player</th><th style="text-align:right">Score</th></tr>
+                </thead>
+                <tbody id="scoresBody"></tbody>
+            </table>
+            <button class="btn-play-again" id="btnPlayAgain" onclick="handlePlayAgain()">Play Again</button>
+            <button class="btn-back-lobby" onclick="handleBackToLobby()">Back to Home</button>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <!-- App Scripts -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/game-engine.js"></script>
+    <script src="js/firebase-sync.js"></script>
+    <script src="js/sounds.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>

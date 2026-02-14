@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNO Online — Play with Friends</title>
+    <meta name="description" content="Play UNO online with friends! Create a room, share the code, and enjoy real-time multiplayer UNO in your browser.">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎴</text></svg>">
+</head>
+<body>
+
+    <!-- Landing Page -->
+    <div class="landing-container" id="landingPage">
+        <div class="logo">
+            <h1>UNO</h1>
+            <p>Play online with friends — no download needed</p>
+        </div>
+
+        <div class="panels">
+            <!-- Create Room Panel -->
+            <div class="panel create">
+                <h2><span class="icon">🎮</span> Create Room</h2>
+                <p class="subtitle">Start a new game and invite friends with a room code</p>
+                <div class="form-group">
+                    <label for="createName">Your Name</label>
+                    <input type="text" id="createName" placeholder="Enter your name" maxlength="15" autocomplete="off">
+                </div>
+                <button class="btn btn-create" id="btnCreate" onclick="handleCreate()">Create Room</button>
+            </div>
+
+            <!-- Join Room Panel -->
+            <div class="panel join">
+                <h2><span class="icon">🚪</span> Join Room</h2>
+                <p class="subtitle">Enter a room code to join your friends' game</p>
+                <div class="form-group">
+                    <label for="joinName">Your Name</label>
+                    <input type="text" id="joinName" placeholder="Enter your name" maxlength="15" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="joinCode">Room Code</label>
+                    <input type="text" id="joinCode" class="code-input" placeholder="ABC123" maxlength="6" autocomplete="off">
+                </div>
+                <button class="btn btn-join" id="btnJoin" onclick="handleJoin()">Join Room</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lobby -->
+    <div class="lobby-container" id="lobbyPage">
+        <div class="lobby-card">
+            <h2>🎴 Game Lobby</h2>
+            <div class="room-code-display" id="lobbyRoomCode" onclick="copyRoomCode()">
+                <span class="copy-hint">Click to copy</span>
+            </div>
+            <p class="player-count" id="playerCount">0 / 8 players</p>
+            <ul class="player-list" id="playerList"></ul>
+            <button class="btn btn-start" id="btnStart" onclick="handleStart()" style="display:none;">Start Game</button>
+            <p class="player-count" id="waitingMsg" style="margin-top:1rem;">Waiting for host to start...</p>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <!-- App Scripts -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/game-engine.js"></script>
+    <script src="js/firebase-sync.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
