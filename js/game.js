@@ -37,6 +37,8 @@ let currentGameState = null;
 let currentRoomData = null;
 let myHand = [];
 let prevTurnPlayerId = null;
+let lastHandFingerprint = '';
+let lastTurnIdx = -1;
 let chatInitialLoadDone = false;
 let gameOverShown = false;
 let timerInterval = null;
@@ -557,6 +559,16 @@ function renderDrawPile(room) {
 // ---- Render Player Hand ----
 function renderPlayerHand(room, playerOrder) {
     const container = document.getElementById('playerHand');
+
+    const gs = room.gameState;
+    const isMyTurn = playerOrder[gs.currentPlayerIndex] === playerId;
+    const turnIdx = gs.currentPlayerIndex;
+
+    // Build a fingerprint to skip redundant DOM rebuilds
+    const fp = myHand.map(c => c.id).join(',') + '|' + turnIdx + '|' + (gs.mustChooseColor ? 1 : 0) + '|' + (gs.currentColor || '') + '|' + (gs.pendingDrawAmount || 0);
+    if (fp === lastHandFingerprint) return;
+    lastHandFingerprint = fp;
+
     container.innerHTML = '';
 
     const gs = room.gameState;

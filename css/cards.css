@@ -10,7 +10,7 @@
     border-radius: 14px;
     position: relative;
     cursor: pointer;
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease;
+    transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.18s ease;
     user-select: none;
     display: flex;
     align-items: center;
@@ -18,6 +18,7 @@
     font-family: 'Outfit', sans-serif;
     flex-shrink: 0;
     transform-origin: bottom center;
+    will-change: transform;
 }
 
 .uno-card::before {
@@ -209,6 +210,7 @@
 .uno-card.playable:hover {
     transform: translateY(-20px) scale(1.08);
     z-index: 10;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 
 .uno-card.playable::after {
@@ -242,18 +244,20 @@
 
 .hand-container {
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: flex-end;
     padding: 1rem;
     padding-top: 2rem;
-    min-height: 200px;
+    height: 200px;
+    min-height: 0;
     gap: 0;
-    overflow: visible;
+    overflow-x: auto;
+    overflow-y: clip;
     padding-bottom: 1.5rem;
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,0.1) transparent;
     -webkit-overflow-scrolling: touch;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 }
 
 .hand-container::-webkit-scrollbar {
@@ -267,7 +271,7 @@
 
 .hand-container .uno-card {
     margin-left: -30px;
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), margin 0.25s ease, clip-path 0.2s ease;
+    transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
     clip-path: inset(0 30px 0 0);
 }
 
@@ -280,18 +284,13 @@
 }
 
 .hand-container .uno-card.playable:hover {
-    margin-left: 5px;
-    margin-right: 35px;
+    transform: translateY(-22px) scale(1.1);
     clip-path: none;
     z-index: 10;
 }
 
 .hand-container .uno-card.playable:hover + .uno-card {
     clip-path: none;
-}
-
-.hand-container .uno-card.playable:hover ~ .uno-card {
-    margin-left: -30px;
 }
 
 /* ---- Pile Cards ---- */

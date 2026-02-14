@@ -300,6 +300,26 @@ function copyRoomCode() {
     }
 }
 
+// ---- Share Invite Link ----
+function shareLobbyLink() {
+    const code = currentRoom;
+    if (!code) return;
+    const url = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'index.html?join=' + code;
+    if (navigator.share) {
+        navigator.share({
+            title: 'Join my UNO game!',
+            text: 'Come play UNO with me! Room code: ' + code,
+            url: url
+        }).catch(() => {});
+    } else {
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('Invite link copied!', 'success');
+        }).catch(() => {
+            showToast(url, 'info');
+        });
+    }
+}
+
 // ---- Go Back ----
 function backToLanding() {
     if (roomListener) roomListener();
@@ -326,6 +346,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (joinCode) {
         document.getElementById('joinCode').value = joinCode.toUpperCase();
         document.getElementById('joinName').focus();
+        // Scroll join panel into view
+        const joinPanel = document.querySelector('.panel.join');
+        if (joinPanel) joinPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     // Cleanup stale rooms
