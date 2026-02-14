@@ -2,6 +2,31 @@
 // Game Board UI — Rendering & Interaction
 // ============================================
 
+// Avatars
+const GAME_AVATARS = [
+    { emoji: '🦊', color: '#E67E22' },
+    { emoji: '🐺', color: '#607D8B' },
+    { emoji: '🦁', color: '#FFD700' },
+    { emoji: '🐸', color: '#00A651' },
+    { emoji: '🦉', color: '#795548' },
+    { emoji: '🐙', color: '#9B59B6' },
+    { emoji: '🦄', color: '#E91E63' },
+    { emoji: '🐲', color: '#0072BC' },
+];
+
+// Rate limiting for chat / emoji / taunts (max 1 per 1.5s)
+let lastSendTimestamp = 0;
+const SEND_COOLDOWN_MS = 1500;
+function canSendNow() {
+    const now = Date.now();
+    if (now - lastSendTimestamp < SEND_COOLDOWN_MS) {
+        showGameToast('Slow down! Wait a moment.', 'warning');
+        return false;
+    }
+    lastSendTimestamp = now;
+    return true;
+}
+
 // Session state
 let roomCode = null;
 let playerId = null;
@@ -18,12 +43,25 @@ let timerInterval = null;
 let lastTickSecond = -1;
 let autoPassInProgress = false;
 const TURN_DURATION = 30;
+let prevDirection = 1;
+let unoPressedThisTurn = false;
+let sortMode = localStorage.getItem('uno_sort_mode') || 'color'; // 'color' or 'type'
 
 // ---- Sort Hand ----
 function sortHand(hand) {
     const colorOrder = { red: 0, blue: 1, green: 2, yellow: 3, wild: 4 };
     const typeOrder = { number: 0, skip: 1, reverse: 2, draw2: 3, wild: 4, wild4: 5 };
     return [...hand].sort((a, b) => {
+        if (sortMode === 'type') {
+            const ta = typeOrder[a.type] ?? 6;
+            const tb = typeOrder[b.type] ?? 6;
+            if (ta !== tb) return ta - tb;
+            const ca = colorOrder[a.color] ?? 5;
+            const cb = colorOrder[b.color] ?? 5;
+            if (ca !== cb) return ca - cb;
+            return (a.value || 0) - (b.value || 0);
+        }
+        // Default: sort by color
         const ca = colorOrder[a.color] ?? 5;
         const cb = colorOrder[b.color] ?? 5;
         if (ca !== cb) return ca - cb;
@@ -32,6 +70,26 @@ function sortHand(hand) {
         if (ta !== tb) return ta - tb;
         return (a.value || 0) - (b.value || 0);
     });
+}
+
+function toggleSortMode() {
+    sortMode = sortMode === 'color' ? 'type' : 'color';
+    localStorage.setItem('uno_sort_mode', sortMode);
+    // Re-sort & re-render hand
+    if (currentRoomData) {
+        const playerOrder = currentGameState && currentGameState.playerOrder
+            ? (Array.isArray(currentGameState.playerOrder) ? currentGameState.playerOrder : Object.values(currentGameState.playerOrder))
+            : [];
+        myHand = sortHand(myHand);
+        renderPlayerHand(currentRoomData, playerOrder);
+    }
+    updateSortButton();
+    showGameToast('Sort: ' + (sortMode === 'color' ? '🎨 Color' : '🔤 Type'), 'info');
+}
+
+function updateSortButton() {
+    const btn = document.getElementById('btnSortToggle');
+    if (btn) btn.textContent = sortMode === 'color' ? '🎨' : '🔤';
 }
 
 // ---- Init ----
@@ -48,8 +106,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('gameRoomCode').textContent = roomCode;
     if (document.getElementById('playerSelfName')) {
-        document.getElementById('playerSelfName').textContent = playerName || '';
+        const avIdx = parseInt(sessionStorage.getItem('uno_avatar') || '0');
+        const av = GAME_AVATARS[avIdx] || GAME_AVATARS[0];
+        document.getElementById('playerSelfName').textContent = av.emoji + ' ' + (playerName || '');
     }
+
+    updateSortButton();
 
     // Listen to room state
     unsubRoom = FirebaseSync.listenToRoom(roomCode, {
@@ -79,6 +141,9 @@ document.addEventListener('DOMContentLoaded', () => {
         showFloatingEmoji(data);
     });
 
+    // Reconnection recovery
+    setupReconnectionHandler();
+
     // Chat enter key
     document.getElementById('chatInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendChatMsg();
@@ -89,6 +154,23 @@ document.addEventListener('DOMContentLoaded', () => {
 function handleRoomUpdate(room) {
     currentRoomData = room;
 
+    // Host migration: if host is gone, promote next player
+    if (room.status === 'playing' && room.host) {
+        const players = room.players || {};
+        const hostGone = !players[room.host];
+        if (hostGone) {
+            // Find the next alive player in order to become host
+            const order = room.gameState && room.gameState.playerOrder
+                ? (Array.isArray(room.gameState.playerOrder) ? room.gameState.playerOrder : Object.values(room.gameState.playerOrder))
+                : Object.keys(players);
+            const alivePlayers = order.filter(pid => !!players[pid]);
+            if (alivePlayers.length > 0 && alivePlayers[0] === playerId) {
+                // I'm the candidate — promote myself
+                migrateHost(roomCode, playerId);
+            }
+        }
+    }
+
     if (room.status === 'waiting') {
         // Game ended, back to lobby
         return;
@@ -96,11 +178,25 @@ function handleRoomUpdate(room) {
 
     if (room.status === 'finished' || (room.gameState && room.gameState.winner)) {
         clearInterval(timerInterval);
-        showGameOver(room);
+        // Check if someone left
+        if (room.gameState && room.gameState.lastAction && room.gameState.lastAction.type === 'player-left') {
+            showGameOverPlayerLeft(room);
+        } else {
+            showGameOver(room);
+        }
         return;
     }
 
     if (room.status === 'playing' && room.gameState) {
+        // Dismiss game-over overlay on rematch restart
+        if (gameOverShown && !room.gameState.winner) {
+            gameOverShown = false;
+            document.getElementById('gameOverOverlay').classList.remove('show');
+            const btn = document.getElementById('btnPlayAgain');
+            btn.disabled = false;
+            btn.textContent = 'Rematch 🔄';
+        }
+
         currentGameState = room.gameState;
 
         // Detect turn changes for sounds & notifications
@@ -164,6 +260,17 @@ function getPlayerName(room, pid) {
     return 'Unknown';
 }
 
+// ---- Resolve player avatar ----
+function getPlayerAvatar(room, pid) {
+    if (room.players && room.players[pid] && room.players[pid].avatar != null) {
+        return room.players[pid].avatar;
+    }
+    if (room.gameState && room.gameState.playerAvatars && room.gameState.playerAvatars[pid] != null) {
+        return room.gameState.playerAvatars[pid];
+    }
+    return 0;
+}
+
 // ---- Render Top Bar ----
 function renderTopBar(room) {
     const gs = room.gameState;
@@ -182,12 +289,22 @@ function renderTopBar(room) {
         topBar.classList.remove('my-turn');
     }
 
-    // Direction
-    const dirEl = document.getElementById('directionIndicator');
-    if (gs.direction === -1) {
-        dirEl.classList.add('ccw');
-    } else {
-        dirEl.classList.remove('ccw');
+    // Direction arrow
+    const arrowSvg = document.getElementById('directionArrowSvg');
+    const arrowWrap = document.getElementById('directionArrowWrap');
+    if (arrowSvg) {
+        if (gs.direction === -1) {
+            arrowSvg.classList.add('ccw');
+        } else {
+            arrowSvg.classList.remove('ccw');
+        }
+        // Pulse when direction changed
+        if (prevDirection !== gs.direction) {
+            arrowWrap.classList.remove('anim-pulse');
+            void arrowWrap.offsetWidth; // force reflow
+            arrowWrap.classList.add('anim-pulse');
+            prevDirection = gs.direction;
+        }
     }
 
     // Current color dot
@@ -211,6 +328,7 @@ function renderOpponents(room, playerOrder) {
 
         const slot = document.createElement('div');
         slot.className = 'opponent-slot';
+        slot.dataset.playerId = pid;
         if (index === room.gameState.currentPlayerIndex) slot.classList.add('is-current-turn');
         if (!isOnline) slot.classList.add('is-offline');
 
@@ -220,6 +338,14 @@ function renderOpponents(room, playerOrder) {
         const dot = document.createElement('span');
         dot.className = 'presence-dot ' + (isOnline ? 'online' : 'offline');
         nameRow.appendChild(dot);
+
+        const avIdx = getPlayerAvatar(room, pid);
+        const av = GAME_AVATARS[avIdx] || GAME_AVATARS[0];
+        const avatarEl = document.createElement('span');
+        avatarEl.className = 'opponent-avatar';
+        avatarEl.textContent = av.emoji;
+        nameRow.appendChild(avatarEl);
+
         const name = document.createElement('div');
         name.className = 'opponent-name';
         if (index === room.gameState.currentPlayerIndex) name.classList.add('name-glow');
@@ -265,6 +391,14 @@ function renderOpponents(room, playerOrder) {
 
         const cardCountEl = document.createElement('div');
         cardCountEl.className = 'opponent-card-count';
+        // Card count badge colors based on danger level
+        if (count <= 1) {
+            cardCountEl.classList.add('count-danger');
+        } else if (count <= 3) {
+            cardCountEl.classList.add('count-warning');
+        } else {
+            cardCountEl.classList.add('count-safe');
+        }
         cardCountEl.textContent = count + (count === 1 ? ' card' : ' cards');
         slot.appendChild(cardCountEl);
 
@@ -275,6 +409,17 @@ function renderOpponents(room, playerOrder) {
             badge.textContent = '🔥 UNO!';
             slot.appendChild(badge);
         }
+
+        // Taunt button - send targeted emoji
+        const tauntBtn = document.createElement('button');
+        tauntBtn.className = 'btn-taunt';
+        tauntBtn.textContent = '😜';
+        tauntBtn.title = 'Send taunt to ' + pName;
+        tauntBtn.onclick = (e) => {
+            e.stopPropagation();
+            sendTargetedTaunt(pid, pName);
+        };
+        slot.appendChild(tauntBtn);
 
         // Catch button (challenge opponent who didn't call UNO)
         const unoCalled = room.gameState.unoCalledBy && room.gameState.unoCalledBy[pid];
@@ -302,11 +447,54 @@ function renderDiscardPile(room) {
         return;
     }
 
-    const topCard = discardArr[discardArr.length - 1];
     container.innerHTML = '';
-    const cardEl = createCardElement(topCard, true);
-    cardEl.classList.add('card-played');
-    container.appendChild(cardEl);
+
+    // Show up to 3 fanned cards
+    const fanCount = Math.min(discardArr.length, 3);
+    const fanAngles = [-6, 0, 6];
+    const fanOffsets = [-8, 0, 8];
+    const startIdx = discardArr.length - fanCount;
+
+    for (let i = 0; i < fanCount; i++) {
+        const card = discardArr[startIdx + i];
+        const cardEl = createCardElement(card, true);
+        const isTop = (i === fanCount - 1);
+        if (isTop) {
+            cardEl.classList.add('card-played');
+            cardEl.classList.add('card-flip');
+        }
+        cardEl.style.position = i === 0 ? 'relative' : 'absolute';
+        cardEl.style.transform = `rotate(${fanAngles[i + (3 - fanCount)]}deg) translateX(${fanOffsets[i + (3 - fanCount)]}px)`;
+        cardEl.style.zIndex = i;
+        if (!isTop) cardEl.style.opacity = '0.6';
+        container.appendChild(cardEl);
+    }
+
+    // Wild color glow on discard pile
+    const gs = room.gameState;
+    const topCard = discardArr[discardArr.length - 1];
+    container.classList.remove('glow-red', 'glow-blue', 'glow-green', 'glow-yellow');
+    if (topCard && (topCard.type === 'wild' || topCard.type === 'wild4') && gs.currentColor) {
+        container.classList.add('glow-' + gs.currentColor);
+    }
+
+    // Last-player pill
+    let pill = document.getElementById('lastPlayerPill');
+    if (!pill) {
+        pill = document.createElement('div');
+        pill.id = 'lastPlayerPill';
+        pill.className = 'last-player-pill';
+        container.parentElement.appendChild(pill);
+    }
+    if (gs.lastAction && gs.lastAction.player) {
+        const pName = getPlayerName(room, gs.lastAction.player);
+        const avIdx = getPlayerAvatar(room, gs.lastAction.player);
+        const av = GAME_AVATARS[avIdx] || GAME_AVATARS[0];
+        pill.textContent = av.emoji + ' ' + pName;
+        pill.style.display = 'block';
+    } else {
+        pill.style.display = 'none';
+    }
 }
 
 // ---- Render Draw Pile ----
@@ -314,7 +502,56 @@ function renderDrawPile(room) {
     const drawArr = room.drawPile
         ? (Array.isArray(room.drawPile) ? room.drawPile : Object.values(room.drawPile))
         : [];
-    document.getElementById('drawPileCount').textContent = drawArr.length;
+    const countEl = document.getElementById('drawPileCount');
+    countEl.textContent = drawArr.length;
+    // Visual warning when draw pile is low
+    const pileEl = document.getElementById('drawPile');
+    if (drawArr.length === 0) {
+        pileEl.style.opacity = '0.4';
+        countEl.style.color = '#ff4444';
+    } else if (drawArr.length <= 10) {
+        pileEl.style.opacity = '0.7';
+        countEl.style.color = '#ffaa00';
+    } else {
+        pileEl.style.opacity = '1';
+        countEl.style.color = '';
+    }
+
+    // Draw pile glow when no playable cards
+    const gs = room.gameState;
+    const playerOrder = Array.isArray(gs.playerOrder) ? gs.playerOrder : Object.values(gs.playerOrder);
+    const isMyTurn = playerOrder[gs.currentPlayerIndex] === playerId;
+    const discardArr = room.discardPile
+        ? (Array.isArray(room.discardPile) ? room.discardPile : Object.values(room.discardPile))
+        : [];
+    const topCard = discardArr.length > 0 ? discardArr[discardArr.length - 1] : null;
+
+    if (isMyTurn && !gs.mustChooseColor && !gs.playerHasDrawn && topCard) {
+        const playable = UnoEngine.getPlayableCards(myHand, topCard, gs.currentColor, gs.pendingDrawAmount || 0, gs.pendingDrawType || null);
+        if (playable.length === 0) {
+            pileEl.classList.add('draw-glow');
+        } else {
+            pileEl.classList.remove('draw-glow');
+        }
+    } else {
+        pileEl.classList.remove('draw-glow');
+    }
+
+    // Stacking indicator
+    const pending = room.gameState.pendingDrawAmount || 0;
+    let stackBadge = document.getElementById('stackBadge');
+    if (pending > 0) {
+        if (!stackBadge) {
+            stackBadge = document.createElement('div');
+            stackBadge.id = 'stackBadge';
+            stackBadge.className = 'stack-badge';
+            pileEl.appendChild(stackBadge);
+        }
+        stackBadge.textContent = '+' + pending;
+        stackBadge.classList.add('show');
+    } else if (stackBadge) {
+        stackBadge.classList.remove('show');
+    }
 }
 
 // ---- Render Player Hand ----
@@ -342,7 +579,9 @@ function renderPlayerHand(room, playerOrder) {
 
     // Render cards
     myHand.forEach((card) => {
-        const canPlay = isMyTurn && !gs.mustChooseColor && topCard && UnoEngine.canPlayCard(card, topCard, gs.currentColor);
+        const pending = gs.pendingDrawAmount || 0;
+        const pendingType = gs.pendingDrawType || null;
+        const canPlay = isMyTurn && !gs.mustChooseColor && topCard && UnoEngine.canPlayCard(card, topCard, gs.currentColor, pending, pendingType);
         const cardEl = createCardElement(card, false);
 
         if (isMyTurn && canPlay) {
@@ -444,9 +683,43 @@ function createCardElement(card, isPile) {
 // ---- Play Card ----
 async function handlePlayCard(cardId) {
     try {
+        const gs = currentGameState;
+        // UNO penalty check: if player has exactly 2 cards and plays one
+        // without having pressed UNO, they get auto-penalized
+        if (gs && myHand.length === 2) {
+            const alreadyCalled = gs.unoCalledBy && gs.unoCalledBy[playerId];
+            if (!alreadyCalled && !unoPressedThisTurn) {
+                // Play the card first (will go to 1 card)
+                await FirebaseSync.playCardAction(roomCode, playerId, cardId);
+                // Then auto-challenge self (draws 2 penalty cards)
+                try {
+                    await FirebaseSync.challengeUnoAction(roomCode, playerId, playerId);
+                    showGameToast('Forgot UNO! +2 penalty! 😱', 'error');
+                    showActionSplash('+2 PENALTY!', 'draw2');
+                } catch (e) {}
+                return;
+            }
+        }
+
+        // Optimistic UI: remove card from hand immediately
+        const cardIdx = myHand.findIndex(c => c.id === cardId);
+        if (cardIdx !== -1) {
+            const playedCard = myHand[cardIdx];
+            myHand.splice(cardIdx, 1);
+            // Immediately re-render hand for snappy feel
+            if (currentRoomData) {
+                const playerOrder = gs.playerOrder
+                    ? (Array.isArray(gs.playerOrder) ? gs.playerOrder : Object.values(gs.playerOrder))
+                    : [];
+                renderPlayerHand(currentRoomData, playerOrder);
+            }
+        }
+
         await FirebaseSync.playCardAction(roomCode, playerId, cardId);
+        unoPressedThisTurn = false; // Reset after playing
     } catch (err) {
         showGameToast('Cannot play that card', 'error');
+        // On failure, Firebase update will restore correct state
     }
 }
 
@@ -504,8 +777,16 @@ function renderUnoButton() {
     const gs = currentGameState;
     if (!gs) return;
 
-    // Show UNO button when player has 2 cards (will have 1 after playing)
-    if (myHand.length === 2 || myHand.length === 1) {
+    // Show UNO button when player has exactly 2 cards (must press before playing to go to 1)
+    // Also show when they have 1 card and haven't called yet (late call chance)
+    if (myHand.length === 2) {
+        const alreadyCalled = gs.unoCalledBy && gs.unoCalledBy[playerId];
+        if (!alreadyCalled) {
+            btn.classList.add('show');
+        } else {
+            btn.classList.remove('show');
+        }
+    } else if (myHand.length === 1) {
         const alreadyCalled = gs.unoCalledBy && gs.unoCalledBy[playerId];
         if (!alreadyCalled) {
             btn.classList.add('show');
@@ -514,11 +795,13 @@ function renderUnoButton() {
         }
     } else {
         btn.classList.remove('show');
+        unoPressedThisTurn = false; // Reset when hand > 2
     }
 }
 
 async function handleUno() {
     try {
+        unoPressedThisTurn = true;
         await FirebaseSync.callUnoAction(roomCode, playerId);
         showGameToast('UNO! 🎉', 'success');
     } catch (err) {
@@ -539,78 +822,44 @@ function handleActionLog(room) {
     if (actionKey === lastLogAction) return;
     lastLogAction = actionKey;
 
-    // Play sound effects
+    // Play sound effects + visual animations
     switch (action.type) {
         case 'play': UnoSounds.playCard(); break;
-        case 'skip': UnoSounds.skip(); break;
-        case 'reverse': UnoSounds.reverse(); break;
-        case 'draw2': UnoSounds.draw2(); break;
-        case 'wild': case 'wild4': UnoSounds.wild(); break;
-        case 'draw': UnoSounds.drawCard(); break;
-        case 'uno': UnoSounds.uno(); break;
-    }
-
-    const players = room.players || {};
-    const getName = (id) => getPlayerName(room, id);
-
-    let msg = '';
-    switch (action.type) {
-        case 'play':
-            msg = `${getName(action.player)} played a card`;
-            break;
         case 'skip':
-            msg = `${getName(action.player)} skipped ${getName(action.skipped)}!`;
+            UnoSounds.skip();
+            showActionSplash('SKIP!', 'skip');
             break;
         case 'reverse':
-            msg = `${getName(action.player)} reversed direction! 🔄`;
+            UnoSounds.reverse();
+            showActionSplash('REVERSE!', 'reverse');
             break;
         case 'draw2':
-            msg = `${getName(action.player)} made ${getName(action.victim)} draw 2! 😈`;
+            UnoSounds.draw2();
+            showActionSplash('+' + (action.stacked || 2), 'draw2');
             break;
         case 'wild':
-            msg = action.chosenColor
-                ? `${getName(action.player)} played Wild → ${action.chosenColor.toUpperCase()}`
-                : `${getName(action.player)} played Wild!`;
+            UnoSounds.wild();
+            showActionSplash('WILD!', 'wild');
             break;
         case 'wild4':
-            msg = action.chosenColor
-                ? `${getName(action.player)} played +4 → ${action.chosenColor.toUpperCase()} (${getName(action.victim)} draws 4)`
-                : `${getName(action.player)} played Wild +4! 💥`;
+            UnoSounds.wild();
+            showActionSplash('+' + (action.stacked || 4), 'draw4');
             break;
         case 'draw':
-            msg = `${getName(action.player)} drew a card`;
+            UnoSounds.drawCard();
+            // Animate card draw for self
+            if (action.player === playerId) {
+                animateCardFly(playerId, 1, 'draw');
+            }
             break;
-        case 'pass':
-            msg = `${getName(action.player)} passed`;
+        case 'draw-stack':
+            UnoSounds.draw2();
+            showActionSplash('+' + (action.count || 0), 'draw2');
+            animateCardFly(action.player, Math.min(action.count || 0, 8), 'draw2');
             break;
-        case 'uno':
-            msg = `${getName(action.player)} called UNO! 🔥`;
-            break;
-        case 'challenge-success':
-            msg = `${getName(action.challenger)} caught ${getName(action.target)} → draws 2!`;
-            break;
-        case 'challenge-fail':
-            msg = `${getName(action.challenger)} wrongly challenged → draws 2!`;
-            break;
-        case 'win':
-            msg = `🏆 ${getName(action.player)} wins!`;
-            break;
+        case 'uno': UnoSounds.uno(); showActionSplash('UNO!', 'uno'); break;
     }
 
-    if (msg) addLogEntry(msg);
-}
-
-function addLogEntry(msg) {
-    const log = document.getElementById('actionLog');
-    const entry = document.createElement('div');
-    entry.className = 'log-entry';
-    entry.textContent = msg;
-    log.prepend(entry);
-
-    // Keep max 10 entries
-    while (log.children.length > 10) {
-        log.removeChild(log.lastChild);
-    }
 }
 
 // ---- Game Over ----
@@ -628,7 +877,25 @@ function showGameOver(room) {
     const winnerId = room.gameState.winner;
     const winnerName = getPlayerName(room, winnerId);
 
-    document.getElementById('winnerName').textContent = `🎉 ${winnerName} wins!`;
+    // Win streak tracking
+    let streak = parseInt(localStorage.getItem('uno_win_streak') || '0');
+    let totalWins = parseInt(localStorage.getItem('uno_total_wins') || '0');
+    let totalGames = parseInt(localStorage.getItem('uno_total_games') || '0');
+    totalGames++;
+    if (winnerId === playerId) {
+        streak++;
+        totalWins++;
+    } else {
+        streak = 0;
+    }
+    localStorage.setItem('uno_win_streak', String(streak));
+    localStorage.setItem('uno_total_wins', String(totalWins));
+    localStorage.setItem('uno_total_games', String(totalGames));
+
+    const winnerText = winnerId === playerId
+        ? `🎉 You win!${streak > 1 ? ' 🔥 ' + streak + '-streak!' : ''}`
+        : `🎉 ${winnerName} wins!`;
+    document.getElementById('winnerName').textContent = winnerText;
 
     // Calculate scores
     const hands = room.hands || {};
@@ -643,7 +910,9 @@ function showGameOver(room) {
     entries.forEach(([pid, score]) => {
         const tr = document.createElement('tr');
         const tdName = document.createElement('td');
-        tdName.textContent = getPlayerName(room, pid);
+        const avIdx = getPlayerAvatar(room, pid);
+        const av = GAME_AVATARS[avIdx] || GAME_AVATARS[0];
+        tdName.textContent = av.emoji + ' ' + getPlayerName(room, pid);
         if (pid === winnerId) tdName.textContent += ' 🏆';
 
         const tdScore = document.createElement('td');
@@ -655,25 +924,131 @@ function showGameOver(room) {
         tbody.appendChild(tr);
     });
 
-    // Show play again only for host
-    document.getElementById('btnPlayAgain').style.display = amHost ? 'block' : 'none';
+    // Post-game stats
+    let statsRow = document.getElementById('postGameStats');
+    if (!statsRow) {
+        statsRow = document.createElement('div');
+        statsRow.id = 'postGameStats';
+        statsRow.className = 'post-game-stats';
+        document.querySelector('.game-over-card').insertBefore(statsRow, document.getElementById('btnPlayAgain'));
+    }
+    const gs = room.gameState;
+    const totalTurns = gs.turnNumber || 0;
+    const myCards = myHand.length;
+    statsRow.innerHTML = `
+        <div class="stat-item"><span class="stat-val">${totalTurns}</span><span class="stat-label">Turns</span></div>
+        <div class="stat-item"><span class="stat-val">${Object.keys(players).length}</span><span class="stat-label">Players</span></div>
+        <div class="stat-item"><span class="stat-val">${myCards}</span><span class="stat-label">Cards Left</span></div>
+        <div class="stat-item"><span class="stat-val">${totalWins}/${totalGames}</span><span class="stat-label">Win Rate</span></div>
+        ${streak > 1 ? `<div class="stat-item streak"><span class="stat-val">🔥 ${streak}</span><span class="stat-label">Streak</span></div>` : ''}
+    `;
+
+    // Show play again for all players
+    const btnPlayAgain = document.getElementById('btnPlayAgain');
+    btnPlayAgain.style.display = 'block';
+    btnPlayAgain.textContent = amHost ? 'Rematch 🔄' : 'Vote Rematch 🔄';
+
+    // Show rematch votes if any
+    const voteCount = room.rematchVotes ? Object.keys(room.rematchVotes).length : 0;
+    const totalPlayers = room.players ? Object.keys(room.players).length : 0;
+    let voteInfo = document.getElementById('rematchVoteInfo');
+    if (!voteInfo) {
+        voteInfo = document.createElement('p');
+        voteInfo.id = 'rematchVoteInfo';
+        voteInfo.className = 'rematch-vote-info';
+        btnPlayAgain.parentElement.insertBefore(voteInfo, btnPlayAgain.nextSibling);
+    }
+    if (voteCount > 0) {
+        voteInfo.textContent = `${voteCount}/${totalPlayers} voted for rematch`;
+        voteInfo.style.display = 'block';
+    } else {
+        voteInfo.style.display = 'none';
+    }
+
+    // Auto-rematch if all players voted (and we're host)
+    if (amHost && voteCount >= totalPlayers - 1 && voteCount > 0 && totalPlayers >= 2) {
+        gameOverShown = false;
+        btnPlayAgain.disabled = true;
+        btnPlayAgain.textContent = 'Starting...';
+        FirebaseSync.rematch(roomCode, playerId).catch(() => {});
+    }
 }
 
 async function handlePlayAgain() {
     try {
-        gameOverShown = false;
-        await FirebaseSync.playAgain(roomCode, playerId);
-        document.getElementById('gameOverOverlay').classList.remove('show');
-        // Will redirect back to lobby via room status change
-        window.location.href = 'index.html';
+        const btn = document.getElementById('btnPlayAgain');
+        if (amHost) {
+            btn.disabled = true;
+            btn.textContent = 'Starting...';
+            gameOverShown = false;
+            await FirebaseSync.rematch(roomCode, playerId);
+            document.getElementById('gameOverOverlay').classList.remove('show');
+        } else {
+            // Non-host: cast a rematch vote
+            btn.disabled = true;
+            btn.textContent = 'Voted ✓';
+            try {
+                await FirebaseSync.voteRematch(roomCode, playerId);
+                showGameToast('Rematch vote cast! ✓', 'info');
+            } catch (e) {
+                showGameToast('Vote failed', 'error');
+                btn.disabled = false;
+                btn.textContent = 'Rematch 🔄';
+            }
+        }
     } catch (err) {
         showGameToast('Failed: ' + err.message, 'error');
+        const btn = document.getElementById('btnPlayAgain');
+        btn.disabled = false;
+        btn.textContent = 'Rematch 🔄';
     }
+}
+
+// ---- Game Over: Player Left ----
+function showGameOverPlayerLeft(room) {
+    if (gameOverShown) return;
+    gameOverShown = true;
+
+    const overlay = document.getElementById('gameOverOverlay');
+    overlay.classList.add('show');
+
+    const action = room.gameState.lastAction;
+    const leftName = action.playerName || 'A player';
+
+    document.getElementById('winnerName').textContent = `${leftName} left the game`;
+    document.getElementById('winnerName').style.color = 'var(--uno-red)';
+
+    const tbody = document.getElementById('scoresBody');
+    tbody.innerHTML = '';
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 2;
+    td.textContent = 'Game ended — a player left';
+    td.style.textAlign = 'center';
+    td.style.color = 'var(--text-secondary)';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+
+    const btnPlayAgain = document.getElementById('btnPlayAgain');
+    btnPlayAgain.style.display = amHost ? 'block' : 'none';
+    btnPlayAgain.textContent = 'Rematch 🔄';
 }
 
 function handleBackToLobby() {
     sessionStorage.clear();
     window.location.href = 'index.html';
+}
+
+// ---- Host Migration ----
+async function migrateHost(code, newHostId) {
+    try {
+        await FirebaseSync.promoteHost(code, newHostId);
+        amHost = true;
+        sessionStorage.setItem('uno_host', 'true');
+        showGameToast('You are now the host 👑', 'info');
+    } catch (e) {
+        // Another player may have already promoted themselves
+    }
 }
 
 function handleLeave() {
@@ -798,6 +1173,35 @@ function toggleSound() {
     btn.classList.toggle('muted', !on);
 }
 
+// ---- Rules Modal ----
+function toggleRules() {
+    const overlay = document.getElementById('rulesOverlay');
+    overlay.classList.toggle('show');
+}
+
+// ---- Reconnection Recovery ----
+function setupReconnectionHandler() {
+    const connRef = db.ref('.info/connected');
+    let wasDisconnected = false;
+
+    connRef.on('value', (snap) => {
+        if (snap.val() === true) {
+            if (wasDisconnected) {
+                showGameToast('Reconnected! 🔗', 'success');
+                // Re-register presence
+                FirebaseSync.setupPresence(roomCode, playerId);
+                // Re-register disconnect handler
+                const playerRef = db.ref('rooms/' + roomCode + '/players/' + playerId);
+                playerRef.onDisconnect().remove();
+            }
+            wasDisconnected = false;
+        } else {
+            wasDisconnected = true;
+            showGameToast('Connection lost... reconnecting', 'error');
+        }
+    });
+}
+
 // ---- Share Room ----
 function shareRoom() {
     const base = window.location.href.replace('game.html', 'index.html').split('?')[0];
@@ -832,6 +1236,7 @@ function sendChatMsg() {
     const input = document.getElementById('chatInput');
     const msg = input.value.trim();
     if (!msg) return;
+    if (!canSendNow()) return;
     input.value = '';
     FirebaseSync.sendChat(roomCode, playerId, playerName, msg);
 }
@@ -859,7 +1264,23 @@ function escapeHtml(str) {
 
 // ---- Emoji Reactions ----
 function sendEmoji(emoji) {
+    if (!canSendNow()) return;
     FirebaseSync.sendReaction(roomCode, playerId, playerName, emoji);
+    UnoSounds.emoji();
+}
+
+function sendQuickPhrase(phrase) {
+    if (!canSendNow()) return;
+    FirebaseSync.sendChat(roomCode, playerId, playerName, phrase);
+    UnoSounds.chat();
+    showGameToast('Sent: ' + phrase, 'info');
+}
+
+function sendTargetedTaunt(targetId, targetName) {
+    if (!canSendNow()) return;
+    const taunts = ['😜', '🤣', '💩', '🫵', '👀', '🤡'];
+    const emoji = taunts[Math.floor(Math.random() * taunts.length)];
+    FirebaseSync.sendReaction(roomCode, playerId, playerName, emoji + ' → ' + targetName);
     UnoSounds.emoji();
 }
 
@@ -947,5 +1368,70 @@ async function handleCatchUno(targetId) {
         showGameToast('You caught them! 🚨', 'success');
     } catch (err) {
         showGameToast('Challenge failed', 'error');
+    }
+}
+
+// ---- Action Splash (SKIP! / REVERSE! / +2 / +4 / UNO!) ----
+function showActionSplash(text, cssClass) {
+    const container = document.getElementById('actionSplash');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = 'splash-text' + (cssClass ? ' splash-' + cssClass : '');
+    el.textContent = text;
+    container.appendChild(el);
+    setTimeout(() => { el.remove(); }, 1200);
+}
+
+// ---- Card Fly Animation (+2 / +4 cards flying to victim) ----
+function animateCardFly(victimId, cardCount, type) {
+    const container = document.getElementById('cardFlyContainer');
+    if (!container) return;
+
+    // Source: draw pile position
+    const drawPile = document.querySelector('.draw-pile-container');
+    if (!drawPile) return;
+    const srcRect = drawPile.getBoundingClientRect();
+
+    // Target: opponent slot or own hand
+    let targetEl = null;
+    const opponentSlots = document.querySelectorAll('.opponent-slot');
+    opponentSlots.forEach(slot => {
+        if (slot.dataset && slot.dataset.playerId === victimId) {
+            targetEl = slot;
+        }
+    });
+    // Fallback: if victim is self, target the hand area
+    if (!targetEl && victimId === playerId) {
+        targetEl = document.querySelector('.player-hand-area');
+    }
+    if (!targetEl) return;
+    const tgtRect = targetEl.getBoundingClientRect();
+
+    const flyClass = type === 'draw4' ? 'fly-draw4' : 'fly-draw2';
+
+    for (let i = 0; i < cardCount; i++) {
+        const card = document.createElement('div');
+        card.className = 'fly-card ' + flyClass;
+
+        const back = document.createElement('div');
+        back.className = 'fly-card-back';
+        card.appendChild(back);
+
+        // Start at draw pile center
+        card.style.left = (srcRect.left + srcRect.width / 2 - 20) + 'px';
+        card.style.top = (srcRect.top + srcRect.height / 2 - 30) + 'px';
+
+        container.appendChild(card);
+
+        // Animate to target with stagger
+        setTimeout(() => {
+            const dx = (tgtRect.left + tgtRect.width / 2 - 20) - (srcRect.left + srcRect.width / 2 - 20);
+            const dy = (tgtRect.top + tgtRect.height / 2 - 30) - (srcRect.top + srcRect.height / 2 - 30);
+            card.style.transform = `translate(${dx}px, ${dy}px) rotate(${15 * (i - 1)}deg)`;
+            card.style.opacity = '0';
+        }, 100 + i * 150);
+
+        // Remove after animation
+        setTimeout(() => { card.remove(); }, 900 + i * 150);
     }
 }

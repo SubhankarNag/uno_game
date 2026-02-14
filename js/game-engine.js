@@ -88,7 +88,18 @@ const UnoEngine = (() => {
     // ---- Initialize Game State ----
 
     function initializeGame(playerIds) {
-        let deck = shuffle(createDeck());
+        // Use 2 decks for 5+ players to prevent card shortage
+        let deck;
+        if (playerIds.length >= 5) {
+            const deck1 = createDeck();
+            const deck2 = createDeck();
+            // Re-ID second deck to avoid duplicates
+            const offset = deck1.length;
+            deck2.forEach(card => { card.id = card.id + offset; });
+            deck = shuffle([...deck1, ...deck2]);
+        } else {
+            deck = shuffle(createDeck());
+        }
         const { hands, drawPile } = dealCards(deck, playerIds);
         const { startCard, drawPile: updatedPile } = findStartingCard(drawPile);
 
@@ -104,6 +115,8 @@ const UnoEngine = (() => {
             winner: null,
             lastAction: null,
             pendingDraw: 0,
+            pendingDrawAmount: 0, // accumulated stacked +2/+4 cards
+            pendingDrawType: null, // 'draw2' or 'wild4' — what type is being stacked
             mustChooseColor: false,
             unoCalledBy: {},
             playerHasDrawn: false,
@@ -112,7 +125,13 @@ const UnoEngine = (() => {
 
     // ---- Card Playability ----
 
-    function canPlayCard(card, topCard, currentColor) {
+    function canPlayCard(card, topCard, currentColor, pendingDrawAmount, pendingDrawType) {
+        // If there's a pending stacked draw, only same type can be stacked
+        if (pendingDrawAmount > 0) {
+            if (pendingDrawType === 'draw2' && card.type === 'draw2') return true;
+            if (pendingDrawType === 'wild4' && card.type === 'wild4') return true;
+            return false; // Must draw if you can't stack
+        }
         // Wild cards can always be played
         if (card.type === 'wild' || card.type === 'wild4') return true;
         // Match color
@@ -124,8 +143,8 @@ const UnoEngine = (() => {
         return false;
     }
 
-    function getPlayableCards(hand, topCard, currentColor) {
-        return hand.filter(card => canPlayCard(card, topCard, currentColor));
+    function getPlayableCards(hand, topCard, currentColor, pendingDrawAmount, pendingDrawType) {
+        return hand.filter(card => canPlayCard(card, topCard, currentColor, pendingDrawAmount, pendingDrawType));
     }
 
     // ---- Next Player ----
@@ -156,8 +175,8 @@ const UnoEngine = (() => {
         const card = hand[cardIndex];
         const topCard = state.discardPile[state.discardPile.length - 1];
 
-        // Validate play
-        if (!canPlayCard(card, topCard, state.currentColor)) {
+        // Validate play (pass stacking context)
+        if (!canPlayCard(card, topCard, state.currentColor, state.pendingDrawAmount || 0, state.pendingDrawType || null)) {
             return { success: false, error: 'Cannot play this card' };
         }
 
@@ -214,19 +233,15 @@ const UnoEngine = (() => {
 
             case 'draw2':
                 state.currentColor = card.color;
-                const draw2Victim = getNextPlayerIndex(state.currentPlayerIndex, state.direction, playerCount);
-                const victimId = state.playerOrder[draw2Victim];
-                // Draw 2 cards for next player
-                for (let i = 0; i < 2; i++) {
-                    if (state.drawPile.length === 0) reshuffleDiscardPile(state);
-                    if (state.drawPile.length > 0) {
-                        state.hands[victimId].push(state.drawPile.pop());
-                    }
-                }
-                // Skip the victim's turn
-                state.currentPlayerIndex = getNextPlayerIndex(draw2Victim, state.direction, playerCount);
+                // Stack: accumulate pending draw, advance to next player to let them stack or draw
+                state.pendingDrawAmount = (state.pendingDrawAmount || 0) + 2;
+                state.pendingDrawType = 'draw2';
+                state.currentPlayerIndex = getNextPlayerIndex(state.currentPlayerIndex, state.direction, playerCount);
                 action = 'draw2';
-                state.lastAction = { type: 'draw2', player: playerId, victim: victimId, card };
+                {
+                    const nextVictim = state.playerOrder[state.currentPlayerIndex];
+                    state.lastAction = { type: 'draw2', player: playerId, victim: nextVictim, card, stacked: state.pendingDrawAmount };
+                }
                 break;
 
             case 'wild':
@@ -242,8 +257,11 @@ const UnoEngine = (() => {
                 state.mustChooseColor = true;
                 state.pendingColorPlayer = playerId;
                 state.pendingWild4 = true;
+                // Stack: accumulate pending draw
+                state.pendingDrawAmount = (state.pendingDrawAmount || 0) + 4;
+                state.pendingDrawType = 'wild4';
                 action = 'wild4';
-                state.lastAction = { type: 'wild4', player: playerId, card };
+                state.lastAction = { type: 'wild4', player: playerId, card, stacked: state.pendingDrawAmount };
                 break;
         }
 
@@ -267,18 +285,12 @@ const UnoEngine = (() => {
         const playerCount = state.playerOrder.length;
 
         if (state.pendingWild4) {
-            // Next player draws 4 and is skipped
+            // With stacking: advance to next player, they can stack another +4 or draw
             const victimIndex = getNextPlayerIndex(state.currentPlayerIndex, state.direction, playerCount);
             const victimId = state.playerOrder[victimIndex];
-            for (let i = 0; i < 4; i++) {
-                if (state.drawPile.length === 0) reshuffleDiscardPile(state);
-                if (state.drawPile.length > 0) {
-                    state.hands[victimId].push(state.drawPile.pop());
-                }
-            }
-            state.currentPlayerIndex = getNextPlayerIndex(victimIndex, state.direction, playerCount);
+            state.currentPlayerIndex = victimIndex;
             delete state.pendingWild4;
-            state.lastAction = { ...state.lastAction, chosenColor: color, victim: victimId };
+            state.lastAction = { ...state.lastAction, chosenColor: color, victim: victimId, stacked: state.pendingDrawAmount || 4 };
         } else {
             // Regular wild — just advance turn
             state.currentPlayerIndex = getNextPlayerIndex(state.currentPlayerIndex, state.direction, playerCount);
@@ -306,10 +318,37 @@ const UnoEngine = (() => {
             return { success: false, error: 'Already drew a card this turn' };
         }
 
+        // If there are stacked pending draws (+2/+4), draw all of them and skip turn
+        const pending = state.pendingDrawAmount || 0;
+        if (pending > 0) {
+            for (let i = 0; i < pending; i++) {
+                if (state.drawPile.length === 0) reshuffleDiscardPile(state);
+                if (state.drawPile.length > 0) {
+                    state.hands[playerId].push(state.drawPile.pop());
+                }
+            }
+            state.pendingDrawAmount = 0;
+            state.pendingDrawType = null;
+            state.currentPlayerIndex = getNextPlayerIndex(
+                state.currentPlayerIndex, state.direction, state.playerOrder.length
+            );
+            state.playerHasDrawn = false;
+            state.turnNumber++;
+            state.lastAction = { type: 'draw-stack', player: playerId, count: pending };
+            return { success: true, state, drawnCard: null, canPlay: false };
+        }
+
         if (state.drawPile.length === 0) reshuffleDiscardPile(state);
 
         if (state.drawPile.length === 0) {
-            return { success: false, error: 'No cards left to draw' };
+            // Truly no cards left — auto-skip turn so game doesn't deadlock
+            state.currentPlayerIndex = getNextPlayerIndex(
+                state.currentPlayerIndex, state.direction, state.playerOrder.length
+            );
+            state.playerHasDrawn = false;
+            state.lastAction = { type: 'pass', player: playerId };
+            state.turnNumber++;
+            return { success: true, state, drawnCard: null, canPlay: false };
         }
 
         const drawnCard = state.drawPile.pop();
@@ -319,7 +358,7 @@ const UnoEngine = (() => {
 
         // Check if drawn card can be played
         const topCard = state.discardPile[state.discardPile.length - 1];
-        const canPlay = canPlayCard(drawnCard, topCard, state.currentColor);
+        const canPlay = canPlayCard(drawnCard, topCard, state.currentColor, 0, null);
 
         if (!canPlay) {
             // Advance turn

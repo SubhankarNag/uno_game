@@ -245,14 +245,15 @@
     justify-content: center;
     align-items: flex-end;
     padding: 1rem;
+    padding-top: 2rem;
     min-height: 200px;
     gap: 0;
-    overflow-x: auto;
-    overflow-y: visible;
+    overflow: visible;
     padding-bottom: 1.5rem;
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,0.1) transparent;
     -webkit-overflow-scrolling: touch;
+    flex-wrap: wrap;
 }
 
 .hand-container::-webkit-scrollbar {
@@ -266,16 +267,27 @@
 
 .hand-container .uno-card {
     margin-left: -30px;
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), margin 0.25s ease;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), margin 0.25s ease, clip-path 0.2s ease;
+    clip-path: inset(0 30px 0 0);
 }
 
 .hand-container .uno-card:first-child {
     margin-left: 0;
 }
 
+.hand-container .uno-card:last-child {
+    clip-path: none;
+}
+
 .hand-container .uno-card.playable:hover {
     margin-left: 5px;
     margin-right: 35px;
+    clip-path: none;
+    z-index: 10;
+}
+
+.hand-container .uno-card.playable:hover + .uno-card {
+    clip-path: none;
 }
 
 .hand-container .uno-card.playable:hover ~ .uno-card {
@@ -318,6 +330,18 @@
 
 .card-played {
     animation: cardPlay 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ---- Card Flip Animation ---- */
+@keyframes cardFlip {
+    0% { transform: perspective(600px) rotateY(180deg) scale(0.6); opacity: 0; }
+    40% { transform: perspective(600px) rotateY(60deg) scale(1.05); opacity: 1; }
+    70% { transform: perspective(600px) rotateY(-10deg) scale(1); }
+    100% { transform: perspective(600px) rotateY(0deg) scale(1); opacity: 1; }
+}
+
+.card-flip {
+    animation: cardFlip 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ---- Opponent Mini Cards ---- */

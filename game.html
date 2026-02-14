@@ -2,13 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>UNO — Game</title>
     <meta name="description" content="UNO online game board — play cards, call UNO, and win!">
+    <meta name="theme-color" content="#ED1C24">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/cards.css">
     <link rel="stylesheet" href="css/game.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎴</text></svg>">
+    <link rel="apple-touch-icon" href="icons/icon-192.svg">
 </head>
 <body class="game-page">
 
@@ -19,7 +24,13 @@
             <span class="room-code-badge" id="gameRoomCode" onclick="copyCode()">------</span>
         </div>
         <div class="top-bar-center">
-            <span class="direction-indicator" id="directionIndicator">🔄</span>
+            <div class="direction-arrow-wrap" id="directionArrowWrap">
+                <svg class="direction-arrow-svg" id="directionArrowSvg" viewBox="0 0 40 40" width="36" height="36">
+                    <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
+                    <path id="dirArrowPath" class="dir-arrow-path" d="M 20 5 A 15 15 0 1 1 5 20" fill="none" stroke="var(--uno-yellow)" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrowHead)"/>
+                    <defs><marker id="arrowHead" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="var(--uno-yellow)" /></marker></defs>
+                </svg>
+            </div>
             <span id="turnLabel">Turn: —</span>
             <div class="current-color-dot" id="currentColorDot"></div>
             <div class="turn-timer" id="turnTimer">
@@ -38,7 +49,11 @@
     </div>
 
     <!-- Opponents -->
-    <div class="opponents-area" id="opponentsArea"></div>
+    <div class="opponents-area" id="opponentsArea">
+        <!-- Skeleton placeholders -->
+        <div class="opponent-slot skeleton-slot"><div class="skeleton-bar"></div><div class="skeleton-bar short"></div></div>
+        <div class="opponent-slot skeleton-slot"><div class="skeleton-bar"></div><div class="skeleton-bar short"></div></div>
+    </div>
 
     <!-- Center Table -->
     <div class="table-center">
@@ -59,8 +74,7 @@
         </div>
     </div>
 
-    <!-- Action Log -->
-    <div class="action-log" id="actionLog"></div>
+
 
     <!-- Player Hand -->
     <div class="player-hand-area">
@@ -69,7 +83,10 @@
                 <span class="player-self-name" id="playerSelfName"></span>
                 <span class="your-turn-badge" id="yourTurnBadge">⚡ Your Turn</span>
             </div>
-            <span class="card-count-label" id="cardCountLabel">0 cards</span>
+            <div class="hand-info-right">
+                <button class="btn-sort-toggle" id="btnSortToggle" onclick="toggleSortMode()" title="Toggle sort (Color/Type)">🎨</button>
+                <span class="card-count-label" id="cardCountLabel">0 cards</span>
+            </div>
         </div>
         <div class="emoji-bar" id="emojiBar">
             <button onclick="sendEmoji('😂')">😂</button>
@@ -78,6 +95,13 @@
             <button onclick="sendEmoji('💀')">💀</button>
             <button onclick="sendEmoji('🔥')">🔥</button>
             <button onclick="sendEmoji('😎')">😎</button>
+        </div>
+        <div class="quick-phrases" id="quickPhrases">
+            <button onclick="sendQuickPhrase('Nice move!')">Nice move!</button>
+            <button onclick="sendQuickPhrase('Hurry up!')">Hurry up!</button>
+            <button onclick="sendQuickPhrase('No way! 😱')">No way!</button>
+            <button onclick="sendQuickPhrase('GG 🤝')">GG</button>
+            <button onclick="sendQuickPhrase('Oops! 😅')">Oops!</button>
         </div>
         <div class="hand-container" id="playerHand"></div>
         <button class="btn-pass" id="btnPass" onclick="handlePass()">Pass Turn</button>
@@ -103,6 +127,7 @@
 
     <!-- Chat -->
     <button class="btn-chat-toggle" id="btnChatToggle" onclick="toggleChat()">💬<span class="chat-unread" id="chatUnread"></span></button>
+    <button class="btn-rules-toggle" id="btnRulesToggle" onclick="toggleRules()" title="Rules">📖</button>
     <div class="chat-overlay" id="chatOverlay" onclick="toggleChat()"></div>
     <div class="chat-panel" id="chatPanel">
         <div class="chat-header"><span>💬 Chat</span><button class="chat-close" onclick="toggleChat()">✕</button></div>
@@ -116,8 +141,48 @@
     <!-- Floating Emojis -->
     <div class="floating-emojis" id="floatingEmojis"></div>
 
+    <!-- Action Splash -->
+    <div class="action-splash" id="actionSplash"></div>
+
+    <!-- Card Fly Animation Container -->
+    <div class="card-fly-container" id="cardFlyContainer"></div>
+
     <!-- Confetti -->
     <canvas class="confetti-canvas" id="confettiCanvas"></canvas>
+
+    <!-- Rules Modal -->
+    <div class="rules-overlay" id="rulesOverlay" onclick="toggleRules()">
+        <div class="rules-modal" onclick="event.stopPropagation()">
+            <div class="rules-header"><span>📖 UNO Rules</span><button class="rules-close" onclick="toggleRules()">✕</button></div>
+            <div class="rules-body">
+                <h4>🎯 Objective</h4>
+                <p>Be the first to play all your cards.</p>
+                <h4>🃏 Card Types</h4>
+                <ul>
+                    <li><b>Number (0-9)</b> — Match by color or number</li>
+                    <li><b>Skip ⊘</b> — Next player loses their turn</li>
+                    <li><b>Reverse ⟳</b> — Reverses play direction</li>
+                    <li><b>Draw Two +2</b> — Next player draws 2 (stackable!)</li>
+                    <li><b>Wild W</b> — Play anytime, choose a color</li>
+                    <li><b>Wild +4</b> — Choose color, next draws 4 (stackable!)</li>
+                </ul>
+                <h4>📋 How to Play</h4>
+                <ul>
+                    <li>Match the top discard by <b>color</b>, <b>number</b>, or <b>type</b></li>
+                    <li>Can't play? Draw a card from the pile</li>
+                    <li>Drew a playable card? You may play it or pass</li>
+                    <li>+2 can stack on +2, +4 can stack on +4</li>
+                </ul>
+                <h4>🔥 UNO Call</h4>
+                <ul>
+                    <li>Press <b>UNO</b> when you have 2 cards (before playing)</li>
+                    <li>Forgot? Other players can <b>Catch</b> you → +2 penalty!</li>
+                </ul>
+                <h4>⏱️ Timer</h4>
+                <p>30 seconds per turn. Auto-draw & pass if time runs out.</p>
+            </div>
+        </div>
+    </div>
 
     <!-- Game Over -->
     <div class="game-over-overlay" id="gameOverOverlay">
@@ -148,5 +213,14 @@
     <script src="js/firebase-sync.js"></script>
     <script src="js/sounds.js"></script>
     <script src="js/game.js"></script>
+
+    <!-- PWA Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(() => {});
+            });
+        }
+    </script>
 </body>
 </html>

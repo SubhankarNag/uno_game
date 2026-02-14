@@ -606,3 +606,55 @@ h1, h2, h3, h4 {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* ---- Avatar Picker ---- */
+
+.avatar-picker {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.avatar-option {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    font-size: 1.4rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+    position: relative;
+}
+
+.avatar-option:hover {
+    transform: scale(1.15);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.avatar-option.selected {
+    border-color: white;
+    transform: scale(1.15);
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+}
+
+.avatar-option.selected::after {
+    content: '✓';
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    width: 16px;
+    height: 16px;
+    background: var(--uno-green);
+    border-radius: 50%;
+    font-size: 0.55rem;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+}

@@ -20,7 +20,7 @@ const FirebaseSync = (() => {
     }
 
     // ---- Create Room ----
-    async function createRoom(hostName) {
+    async function createRoom(hostName, avatar) {
         const code = generateRoomCode();
         const playerId = generatePlayerId();
         const roomRef = db.ref('rooms/' + code);
@@ -29,7 +29,7 @@ const FirebaseSync = (() => {
         const snapshot = await roomRef.once('value');
         if (snapshot.exists()) {
             // Extremely unlikely collision — try once more
-            return createRoom(hostName);
+            return createRoom(hostName, avatar);
         }
 
         const roomData = {
@@ -40,6 +40,7 @@ const FirebaseSync = (() => {
             players: {
                 [playerId]: {
                     name: hostName,
+                    avatar: avatar || 0,
                     cardCount: 0,
                     isReady: true,
                     hasCalledUno: false,
@@ -57,7 +58,7 @@ const FirebaseSync = (() => {
     }
 
     // ---- Join Room ----
-    async function joinRoom(code, playerName) {
+    async function joinRoom(code, playerName, avatar) {
         const roomRef = db.ref('rooms/' + code);
         const snapshot = await roomRef.once('value');
 
@@ -79,6 +80,7 @@ const FirebaseSync = (() => {
         const playerId = generatePlayerId();
         await roomRef.child('players/' + playerId).set({
             name: playerName,
+            avatar: avatar || 0,
             cardCount: 0,
             isReady: true,
             hasCalledUno: false,
@@ -136,6 +138,12 @@ const FirebaseSync = (() => {
             updates['gameState']['playerNames'][pid] = room.players[pid].name;
         }
 
+        // Store player avatars
+        updates['gameState']['playerAvatars'] = {};
+        for (const pid of playerIds) {
+            updates['gameState']['playerAvatars'][pid] = room.players[pid].avatar || 0;
+        }
+
         // Store hands
         updates['hands'] = {};
         for (const [pid, hand] of Object.entries(gameState.hands)) {
@@ -154,11 +162,22 @@ const FirebaseSync = (() => {
         await roomRef.update(updates);
     }
 
+    // ---- Transaction with Retry ----
+    async function withRetry(fn, maxRetries = 3) {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                return await fn();
+            } catch (err) {
+                if (attempt === maxRetries) throw err;
+                // Exponential backoff: 100ms, 200ms, 400ms
+                await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt)));
+            }
+        }
+    }
+
     // ---- Play Card ----
     async function playCardAction(code, playerId, cardId) {
-        const roomRef = db.ref('rooms/' + code);
-
-        return db.ref('rooms/' + code).transaction((room) => {
+        return withRetry(() => db.ref('rooms/' + code).transaction((room) => {
             if (!room || room.status !== 'playing') return room;
 
             // Reconstruct game state
@@ -169,12 +188,12 @@ const FirebaseSync = (() => {
 
             applyGameState(room, result.state);
             return room;
-        });
+        }));
     }
 
     // ---- Choose Color ----
     async function chooseColorAction(code, playerId, color) {
-        return db.ref('rooms/' + code).transaction((room) => {
+        return withRetry(() => db.ref('rooms/' + code).transaction((room) => {
             if (!room || room.status !== 'playing') return room;
 
             const gameState = reconstructGameState(room);
@@ -184,12 +203,12 @@ const FirebaseSync = (() => {
 
             applyGameState(room, result.state);
             return room;
-        });
+        }));
     }
 
     // ---- Draw Card ----
     async function drawCardAction(code, playerId) {
-        return db.ref('rooms/' + code).transaction((room) => {
+        return withRetry(() => db.ref('rooms/' + code).transaction((room) => {
             if (!room || room.status !== 'playing') return room;
 
             const gameState = reconstructGameState(room);
@@ -199,12 +218,12 @@ const FirebaseSync = (() => {
 
             applyGameState(room, result.state);
             return room;
-        });
+        }));
     }
 
     // ---- Pass Turn ----
     async function passTurnAction(code, playerId) {
-        return db.ref('rooms/' + code).transaction((room) => {
+        return withRetry(() => db.ref('rooms/' + code).transaction((room) => {
             if (!room || room.status !== 'playing') return room;
 
             const gameState = reconstructGameState(room);
@@ -214,12 +233,12 @@ const FirebaseSync = (() => {
 
             applyGameState(room, result.state);
             return room;
-        });
+        }));
     }
 
     // ---- Call UNO ----
     async function callUnoAction(code, playerId) {
-        return db.ref('rooms/' + code).transaction((room) => {
+        return withRetry(() => db.ref('rooms/' + code).transaction((room) => {
             if (!room || room.status !== 'playing') return room;
 
             const gameState = reconstructGameState(room);
@@ -229,12 +248,12 @@ const FirebaseSync = (() => {
 
             applyGameState(room, result.state);
             return room;
-        });
+        }));
     }
 
     // ---- Challenge UNO ----
     async function challengeUnoAction(code, challengerId, targetId) {
-        return db.ref('rooms/' + code).transaction((room) => {
+        return withRetry(() => db.ref('rooms/' + code).transaction((room) => {
             if (!room || room.status !== 'playing') return room;
 
             const gameState = reconstructGameState(room);
@@ -244,7 +263,7 @@ const FirebaseSync = (() => {
 
             applyGameState(room, result.state);
             return room;
-        });
+        }));
     }
 
     // ---- Play Again (reset game) ----
@@ -277,17 +296,107 @@ const FirebaseSync = (() => {
         await roomRef.update(updates);
     }
 
+    // ---- Rematch (same players, re-deal, stay on game page) ----
+    async function rematch(code, hostId) {
+        const roomRef = db.ref('rooms/' + code);
+        const snapshot = await roomRef.once('value');
+        const room = snapshot.val();
+
+        if (room.host !== hostId) {
+            throw new Error('Only the host can start a rematch');
+        }
+
+        const playerIds = Object.keys(room.players || {});
+        if (playerIds.length < 2) {
+            throw new Error('Need at least 2 players');
+        }
+
+        const gameState = UnoEngine.initializeGame(playerIds);
+
+        const updates = {};
+        updates['status'] = 'playing';
+        updates['gameState'] = {
+            currentPlayerIndex: gameState.currentPlayerIndex,
+            direction: gameState.direction,
+            currentColor: gameState.currentColor,
+            turnNumber: gameState.turnNumber,
+            winner: null,
+            lastAction: null,
+            mustChooseColor: false,
+            playerOrder: gameState.playerOrder,
+            unoCalledBy: gameState.unoCalledBy || {},
+            playerHasDrawn: false,
+            playerNames: {},
+            playerAvatars: {},
+            turnStartedAt: firebase.database.ServerValue.TIMESTAMP,
+            pendingDrawAmount: 0,
+            pendingDrawType: null,
+        };
+
+        for (const pid of playerIds) {
+            updates['gameState']['playerNames'][pid] = room.players[pid].name;
+            updates['gameState']['playerAvatars'][pid] = room.players[pid].avatar || 0;
+        }
+
+        updates['hands'] = {};
+        for (const [pid, hand] of Object.entries(gameState.hands)) {
+            updates['hands'][pid] = hand;
+        }
+        updates['drawPile'] = gameState.drawPile;
+        updates['discardPile'] = gameState.discardPile;
+        updates['chat'] = null; // Clear chat for fresh round
+        updates['rematchVotes'] = null; // Clear votes
+
+        for (const pid of playerIds) {
+            updates['players/' + pid + '/cardCount'] = gameState.hands[pid].length;
+        }
+
+        await roomRef.update(updates);
+    }
+
+    // ---- Rematch Vote ----
+    async function voteRematch(code, voterId) {
+        const voteRef = db.ref('rooms/' + code + '/rematchVotes/' + voterId);
+        await voteRef.set(true);
+    }
+
     // ---- Leave Room ----
     async function leaveRoom(code, playerId) {
+        const roomRef = db.ref('rooms/' + code);
+        const snapshot = await roomRef.once('value');
+        const room = snapshot.val();
+
+        // If game is in progress, end it immediately
+        if (room && room.status === 'playing') {
+            const playerName = (room.players && room.players[playerId] && room.players[playerId].name) || 'A player';
+            await roomRef.update({
+                status: 'finished',
+                'gameState/winner': null,
+                'gameState/lastAction': { type: 'player-left', player: playerId, playerName: playerName }
+            });
+        }
+
         const playerRef = db.ref('rooms/' + code + '/players/' + playerId);
         await playerRef.remove();
 
         // Check if room is empty and delete
-        const roomRef = db.ref('rooms/' + code);
         const snap = await roomRef.child('players').once('value');
         if (!snap.exists() || !snap.val()) {
             await roomRef.remove();
         }
+    }
+
+    // ---- Host Migration ----
+    async function promoteHost(code, newHostId) {
+        return withRetry(() => db.ref('rooms/' + code).transaction((room) => {
+            if (!room) return room;
+            const players = room.players || {};
+            // Only promote if old host is truly gone and we're a valid player
+            if (!players[room.host] && players[newHostId]) {
+                room.host = newHostId;
+            }
+            return room;
+        }));
     }
 
     // ---- Listeners ----
@@ -336,6 +445,8 @@ const FirebaseSync = (() => {
             unoCalledBy: room.gameState.unoCalledBy || {},
             playerHasDrawn: room.gameState.playerHasDrawn || false,
             turnStartedAt: room.gameState.turnStartedAt || Date.now(),
+            pendingDrawAmount: room.gameState.pendingDrawAmount || 0,
+            pendingDrawType: room.gameState.pendingDrawType || null,
         };
     }
 
@@ -352,6 +463,8 @@ const FirebaseSync = (() => {
         room.gameState.pendingWild4 = state.pendingWild4 || false;
         room.gameState.unoCalledBy = state.unoCalledBy || {};
         room.gameState.playerHasDrawn = state.playerHasDrawn || false;
+        room.gameState.pendingDrawAmount = state.pendingDrawAmount || 0;
+        room.gameState.pendingDrawType = state.pendingDrawType || null;
         if (prevPlayerIndex !== state.currentPlayerIndex) {
             room.gameState.turnStartedAt = Date.now();
         }
@@ -448,7 +561,10 @@ const FirebaseSync = (() => {
         callUnoAction,
         challengeUnoAction,
         playAgain,
+        rematch,
+        voteRematch,
         leaveRoom,
+        promoteHost,
         listenToRoom,
         listenToHand,
         generatePlayerId,

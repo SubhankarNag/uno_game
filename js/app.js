@@ -15,6 +15,65 @@ const AVATAR_COLORS = [
     '#9B59B6', '#E67E22', '#1ABC9C', '#E91E63'
 ];
 
+// ---- Avatars ----
+const AVATARS = [
+    { emoji: '🦊', color: '#E67E22', name: 'Fox' },
+    { emoji: '🐺', color: '#607D8B', name: 'Wolf' },
+    { emoji: '🦁', color: '#FFD700', name: 'Lion' },
+    { emoji: '🐸', color: '#00A651', name: 'Frog' },
+    { emoji: '🦉', color: '#795548', name: 'Owl' },
+    { emoji: '🐙', color: '#9B59B6', name: 'Octopus' },
+    { emoji: '🦄', color: '#E91E63', name: 'Unicorn' },
+    { emoji: '🐲', color: '#0072BC', name: 'Dragon' },
+];
+
+let selectedCreateAvatar = 0;
+let selectedJoinAvatar = 0;
+
+// ---- Persistent Name & Avatar (localStorage) ----
+function loadSavedProfile() {
+    const savedName = localStorage.getItem('uno_saved_name');
+    const savedAvatar = localStorage.getItem('uno_saved_avatar');
+    if (savedName) {
+        const createInput = document.getElementById('createName');
+        const joinInput = document.getElementById('joinName');
+        if (createInput) createInput.value = savedName;
+        if (joinInput) joinInput.value = savedName;
+    }
+    if (savedAvatar != null) {
+        const idx = parseInt(savedAvatar) || 0;
+        selectedCreateAvatar = idx;
+        selectedJoinAvatar = idx;
+    }
+}
+
+function saveProfile(name, avatarIdx) {
+    localStorage.setItem('uno_saved_name', name);
+    localStorage.setItem('uno_saved_avatar', String(avatarIdx));
+}
+
+function populateAvatarPicker(containerId, type) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    const savedIdx = (type === 'create') ? selectedCreateAvatar : selectedJoinAvatar;
+    AVATARS.forEach((av, i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'avatar-option' + (i === savedIdx ? ' selected' : '');
+        btn.style.background = av.color;
+        btn.textContent = av.emoji;
+        btn.title = av.name;
+        btn.onclick = () => {
+            container.querySelectorAll('.avatar-option').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            if (type === 'create') selectedCreateAvatar = i;
+            else selectedJoinAvatar = i;
+        };
+        container.appendChild(btn);
+    });
+}
+
 // ---- Toast ----
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
@@ -41,7 +100,7 @@ async function handleCreate() {
     btn.innerHTML = 'Creating... <span class="spinner"></span>';
 
     try {
-        const { code, playerId } = await FirebaseSync.createRoom(name);
+        const { code, playerId } = await FirebaseSync.createRoom(name, selectedCreateAvatar);
         currentRoom = code;
         currentPlayerId = playerId;
         currentPlayerName = name;
@@ -52,7 +111,9 @@ async function handleCreate() {
         sessionStorage.setItem('uno_player', playerId);
         sessionStorage.setItem('uno_name', name);
         sessionStorage.setItem('uno_host', 'true');
+        sessionStorage.setItem('uno_avatar', String(selectedCreateAvatar));
 
+        saveProfile(name, selectedCreateAvatar);
         showLobby(code);
         showToast('Room created!', 'success');
     } catch (err) {
@@ -82,7 +143,7 @@ async function handleJoin() {
     btn.innerHTML = 'Joining... <span class="spinner"></span>';
 
     try {
-        const { playerId } = await FirebaseSync.joinRoom(code, name);
+        const { playerId } = await FirebaseSync.joinRoom(code, name, selectedJoinAvatar);
         currentRoom = code;
         currentPlayerId = playerId;
         currentPlayerName = name;
@@ -92,7 +153,9 @@ async function handleJoin() {
         sessionStorage.setItem('uno_player', playerId);
         sessionStorage.setItem('uno_name', name);
         sessionStorage.setItem('uno_host', 'false');
+        sessionStorage.setItem('uno_avatar', String(selectedJoinAvatar));
 
+        saveProfile(name, selectedJoinAvatar);
         showLobby(code);
         showToast('Joined room!', 'success');
     } catch (err) {
@@ -132,6 +195,23 @@ function updateLobbyUI(room) {
     const playerIds = Object.keys(players);
     const count = playerIds.length;
 
+    // Host migration in lobby: if host left, first player promotes
+    if (room.host && !players[room.host] && count > 0) {
+        if (playerIds[0] === currentPlayerId) {
+            FirebaseSync.promoteHost(currentRoom, currentPlayerId).then(() => {
+                isHost = true;
+                sessionStorage.setItem('uno_host', 'true');
+                showToast('You are now the host 👑', 'info');
+            }).catch(() => {});
+        }
+    }
+
+    // Update local host status if room.host changed to us
+    if (room.host === currentPlayerId && !isHost) {
+        isHost = true;
+        sessionStorage.setItem('uno_host', 'true');
+    }
+
     document.getElementById('playerCount').textContent = `${count} / ${room.maxPlayers} players`;
 
     const list = document.getElementById('playerList');
@@ -146,8 +226,10 @@ function updateLobbyUI(room) {
 
         const avatar = document.createElement('div');
         avatar.className = 'player-avatar';
-        avatar.style.background = AVATAR_COLORS[index % AVATAR_COLORS.length];
-        avatar.textContent = player.name.charAt(0).toUpperCase();
+        const avIdx = (player.avatar != null) ? player.avatar : (index % AVATARS.length);
+        const av = AVATARS[avIdx] || AVATARS[0];
+        avatar.style.background = av.color;
+        avatar.textContent = av.emoji;
 
         const nameSpan = document.createElement('span');
         nameSpan.textContent = player.name;
@@ -231,6 +313,13 @@ function backToLanding() {
 
 // ---- Enter key support ----
 document.addEventListener('DOMContentLoaded', () => {
+    // Load saved name & avatar from localStorage
+    loadSavedProfile();
+
+    // Populate avatar pickers
+    populateAvatarPicker('createAvatarPicker', 'create');
+    populateAvatarPicker('joinAvatarPicker', 'join');
+
     // Auto-fill join code from URL
     const params = new URLSearchParams(window.location.search);
     const joinCode = params.get('join');

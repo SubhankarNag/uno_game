@@ -6,10 +6,15 @@
 
 .game-page {
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
 }
 
 /* ---- Top Bar ---- */
@@ -69,13 +74,47 @@
     color: var(--text-primary);
 }
 
-.direction-indicator {
-    font-size: 1.5rem;
-    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+.direction-arrow-wrap {
+    width: 36px;
+    height: 36px;
+    position: relative;
+    flex-shrink: 0;
 }
 
-.direction-indicator.ccw {
+.direction-arrow-svg {
+    width: 100%;
+    height: 100%;
+    transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.direction-arrow-svg.ccw {
     transform: scaleX(-1);
+}
+
+.dir-arrow-path {
+    stroke-dasharray: 70;
+    stroke-dashoffset: 0;
+    filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.4));
+}
+
+.direction-arrow-wrap.anim-pulse .direction-arrow-svg {
+    animation: dirPulse 0.6s ease;
+}
+
+@keyframes dirPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.35); filter: drop-shadow(0 0 12px rgba(255,215,0,0.7)); }
+    100% { transform: scale(1); }
+}
+
+@keyframes dirPulseCCW {
+    0% { transform: scaleX(-1) scale(1); }
+    50% { transform: scaleX(-1) scale(1.35); filter: drop-shadow(0 0 12px rgba(255,215,0,0.7)); }
+    100% { transform: scaleX(-1) scale(1); }
+}
+
+.direction-arrow-wrap.anim-pulse .direction-arrow-svg.ccw {
+    animation: dirPulseCCW 0.6s ease;
 }
 
 .current-color-dot {
@@ -251,10 +290,6 @@
     padding: 0.15rem 0.5rem;
     border-radius: 999px;
     border: 1px solid var(--border-subtle);
-}
-
-.discard-pile-container {
-    position: relative;
 }
 
 /* ---- Player Hand Area ---- */
@@ -526,45 +561,333 @@
     color: var(--text-primary);
 }
 
-/* ---- Action Log ---- */
+/* ---- Stack Badge ---- */
+.stack-badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: linear-gradient(135deg, var(--uno-red), #ff4444);
+    color: white;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 900;
+    font-size: 1rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    min-width: 30px;
+    text-align: center;
+    z-index: 5;
+    opacity: 0;
+    transform: scale(0);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 10px rgba(237, 28, 36, 0.5);
+    animation: none;
+}
+.stack-badge.show {
+    opacity: 1;
+    transform: scale(1);
+    animation: stackPulse 1s ease-in-out infinite;
+}
+@keyframes stackPulse {
+    0%, 100% { box-shadow: 0 2px 10px rgba(237, 28, 36, 0.5); }
+    50% { box-shadow: 0 2px 20px rgba(237, 28, 36, 0.8); transform: scale(1.1); }
+}
 
-.action-log {
+/* ---- Discard Pile Fan ---- */
+.discard-pile-container {
+    position: relative;
+    min-width: 130px;
+    min-height: 195px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ---- Wild Color Glow on Discard ---- */
+.discard-pile-container.glow-red { filter: drop-shadow(0 0 15px rgba(237, 28, 36, 0.6)); }
+.discard-pile-container.glow-blue { filter: drop-shadow(0 0 15px rgba(0, 114, 188, 0.6)); }
+.discard-pile-container.glow-green { filter: drop-shadow(0 0 15px rgba(0, 166, 81, 0.6)); }
+.discard-pile-container.glow-yellow { filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.6)); }
+
+/* ---- Last Player Pill ---- */
+.last-player-pill {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+    text-align: center;
+    margin-top: 0.3rem;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---- Draw Pile Glow (no playable cards) ---- */
+.draw-pile-container.draw-glow {
+    animation: drawGlow 1.5s ease-in-out infinite;
+}
+
+@keyframes drawGlow {
+    0%, 100% { box-shadow: 0 0 10px rgba(255,215,0,0.3); filter: drop-shadow(0 0 8px rgba(255,215,0,0.3)); }
+    50% { box-shadow: 0 0 25px rgba(255,215,0,0.6); filter: drop-shadow(0 0 18px rgba(255,215,0,0.5)); }
+}
+
+/* ---- Card Count Badge Colors ---- */
+.opponent-card-count.count-danger {
+    color: var(--uno-red);
+    font-weight: 700;
+    animation: pulse 1s infinite;
+}
+.opponent-card-count.count-warning {
+    color: #ffaa00;
+    font-weight: 600;
+}
+.opponent-card-count.count-safe {
+    color: var(--text-secondary);
+}
+
+/* ---- Sort Toggle Button ---- */
+.btn-sort-toggle {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    width: 32px;
+    height: 28px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.btn-sort-toggle:hover {
+    background: rgba(255,255,255,0.12);
+    border-color: var(--border-glow);
+}
+
+.hand-info-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* ---- Quick Phrases ---- */
+.quick-phrases {
+    display: flex;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+.quick-phrases button {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-family: 'Inter', sans-serif;
+    white-space: nowrap;
+}
+.quick-phrases button:hover {
+    background: rgba(255,255,255,0.1);
+    color: var(--text-primary);
+    border-color: var(--border-glow);
+}
+.quick-phrases button:active {
+    transform: scale(0.95);
+}
+
+/* ---- Taunt Button ---- */
+.btn-taunt {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    opacity: 0.5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin-top: 0.1rem;
+}
+.btn-taunt:hover {
+    opacity: 1;
+    border-color: var(--border-glow);
+    background: rgba(255,255,255,0.08);
+    transform: scale(1.2);
+}
+
+/* ---- Skeleton Loading ---- */
+.skeleton-slot {
+    background: rgba(255,255,255,0.03) !important;
+    border-color: transparent !important;
+    min-width: 100px;
+    padding: 1rem !important;
+}
+.skeleton-bar {
+    height: 12px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+    margin-bottom: 0.4rem;
+}
+.skeleton-bar.short {
+    width: 60%;
+    margin: 0 auto;
+}
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ---- Rules Modal ---- */
+.rules-overlay {
     position: fixed;
-    top: 60px;
-    right: 1rem;
-    width: 260px;
-    max-height: 200px;
-    overflow-y: auto;
-    z-index: 15;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(5px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 150;
+}
+.rules-overlay.show { display: flex; }
+
+.rules-modal {
+    background: rgba(15,15,35,0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-xl);
+    width: 90%;
+    max-width: 420px;
+    max-height: 80vh;
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
-    pointer-events: none;
+    overflow: hidden;
 }
+.rules-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.2rem;
+    border-bottom: 1px solid var(--border-subtle);
+    font-weight: 700;
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.1rem;
+}
+.rules-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    transition: var(--transition-fast);
+}
+.rules-close:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+.rules-body {
+    padding: 1rem 1.2rem;
+    overflow-y: auto;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+}
+.rules-body h4 {
+    margin-top: 0.8rem;
+    margin-bottom: 0.3rem;
+    font-size: 0.9rem;
+    color: var(--uno-yellow);
+}
+.rules-body h4:first-child { margin-top: 0; }
+.rules-body ul {
+    padding-left: 1.2rem;
+    margin: 0.3rem 0;
+}
+.rules-body li {
+    margin-bottom: 0.25rem;
+    color: var(--text-secondary);
+}
+.rules-body li b { color: var(--text-primary); }
+.rules-body p { color: var(--text-secondary); margin: 0.2rem 0; }
 
-.log-entry {
-    background: rgba(10, 10, 30, 0.85);
-    backdrop-filter: blur(8px);
+/* ---- Rules Toggle Button ---- */
+.btn-rules-toggle {
+    position: fixed;
+    bottom: 160px;
+    left: 0.75rem;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--border-subtle);
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    z-index: 30;
+    transition: var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.btn-rules-toggle:hover { background: rgba(255,255,255,0.15); transform: scale(1.1); }
+
+/* ---- Post-Game Stats ---- */
+.post-game-stats {
+    display: flex;
+    justify-content: center;
+    gap: 0.8rem;
+    margin: 1rem 0;
+    flex-wrap: wrap;
+}
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(255,255,255,0.04);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
-    padding: 0.4rem 0.7rem;
+    padding: 0.5rem 0.7rem;
+    min-width: 55px;
+}
+.stat-item.streak {
+    border-color: var(--uno-yellow);
+    background: rgba(255,215,0,0.08);
+}
+.stat-val {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+.stat-label {
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-top: 0.15rem;
+}
+
+/* ---- Rematch Vote Info ---- */
+.rematch-vote-info {
     font-size: 0.75rem;
     color: var(--text-secondary);
-    animation: logSlide 0.3s ease-out;
-}
-
-@keyframes logSlide {
-    from { opacity: 0; transform: translateX(20px); }
-    to { opacity: 1; transform: translateX(0); }
-}
-
-.action-log::-webkit-scrollbar {
-    width: 4px;
-}
-
-.action-log::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.1);
-    border-radius: 2px;
+    margin-top: 0.5rem;
+    text-align: center;
 }
 
 /* ---- Turn Indicator Tag ---- */
@@ -957,6 +1280,11 @@
     gap: 2px;
 }
 
+.opponent-avatar {
+    font-size: 1rem;
+    margin-right: 2px;
+}
+
 .opponent-slot.is-offline {
     opacity: 0.5;
 }
@@ -991,6 +1319,85 @@
     pointer-events: none;
     z-index: 300;
     display: none;
+}
+
+/* ---- Action Splash Overlay ---- */
+
+.action-splash {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 60;
+}
+
+.splash-text {
+    font-family: 'Outfit', sans-serif;
+    font-size: 3.5rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: white;
+    text-shadow: 0 0 30px currentColor, 0 4px 8px rgba(0,0,0,0.5);
+    animation: splashIn 1s ease-out forwards;
+    position: absolute;
+}
+
+.splash-text.splash-skip { color: var(--uno-red); text-shadow: 0 0 40px var(--uno-red), 0 0 80px rgba(237,28,36,0.3), 0 4px 8px rgba(0,0,0,0.5); }
+.splash-text.splash-reverse { color: var(--uno-blue); text-shadow: 0 0 40px var(--uno-blue), 0 0 80px rgba(0,114,188,0.3), 0 4px 8px rgba(0,0,0,0.5); }
+.splash-text.splash-draw2 { color: var(--uno-yellow); text-shadow: 0 0 40px var(--uno-yellow), 0 0 80px rgba(255,215,0,0.3), 0 4px 8px rgba(0,0,0,0.5); }
+.splash-text.splash-draw4 { color: #ff6600; text-shadow: 0 0 40px #ff6600, 0 0 80px rgba(255,102,0,0.3), 0 4px 8px rgba(0,0,0,0.5); }
+.splash-text.splash-wild { color: #c77dff; text-shadow: 0 0 40px #c77dff, 0 0 80px rgba(199,125,255,0.3), 0 4px 8px rgba(0,0,0,0.5); }
+.splash-text.splash-uno { color: var(--uno-red); font-size: 5rem; text-shadow: 0 0 40px var(--uno-red), 0 0 80px rgba(237,28,36,0.3), 0 4px 8px rgba(0,0,0,0.5); }
+
+@keyframes splashIn {
+    0% { transform: scale(0.3) rotate(-15deg); opacity: 0; filter: blur(10px); }
+    20% { transform: scale(1.3) rotate(5deg); opacity: 1; filter: blur(0); }
+    35% { transform: scale(0.95) rotate(-2deg); opacity: 1; }
+    50% { transform: scale(1.05) rotate(0deg); opacity: 1; }
+    70% { transform: scale(1) rotate(0deg); opacity: 0.9; }
+    100% { transform: scale(2); opacity: 0; filter: blur(5px); }
+}
+
+/* ---- Card Fly Animation ---- */
+
+.card-fly-container {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 55;
+}
+
+.fly-card {
+    position: absolute;
+    width: 50px;
+    height: 75px;
+    border-radius: 8px;
+    background: linear-gradient(145deg, #2a2a4e, #1a1a3e);
+    border: 2px solid rgba(255,255,255,0.2);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    z-index: 1;
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease 0.5s;
+}
+
+.fly-card .fly-card-back {
+    width: 60%;
+    height: 40%;
+    margin: 18% auto;
+    background: linear-gradient(135deg, var(--uno-red), var(--uno-blue));
+    border-radius: 4px;
+}
+
+.fly-card.fly-draw2 { border-color: var(--uno-yellow); box-shadow: 0 0 12px rgba(255,215,0,0.5); }
+.fly-card.fly-draw4 { border-color: #ff6600; box-shadow: 0 0 12px rgba(255,102,0,0.5); }
+.fly-card.fly-draw { border-color: var(--uno-blue); box-shadow: 0 0 12px rgba(0,114,188,0.4); }
+
+@keyframes flyToTarget {
+    0% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
 }
 
 /* ---- Responsive ---- */
@@ -1045,311 +1452,13 @@
         font-size: 0.9rem;
     }
 
-    .action-log {
-        width: 180px;
-        font-size: 0.7rem;
-        top: 55px;
-        right: 0.5rem;
-    }
-
-    .log-entry {
-        padding: 0.3rem 0.5rem;
-        font-size: 0.65rem;
-    }
-
     .hand-container {
         padding: 0.5rem;
+        padding-top: 1.5rem;
         min-height: 160px;
-        -webkit-overflow-scrolling: touch;
-    }
-}
-
-@media (max-width: 480px) {
-    .top-bar {
-        padding: 0.4rem 0.6rem;
-        gap: 0.3rem;
+        overflow: visible;
     }
 
-    .top-bar-logo {
-        font-size: 1rem;
-    }
-
-    .room-code-badge {
-        font-size: 0.65rem;
-        padding: 0.2rem 0.5rem;
-    }
-
-    #turnLabel {
-        font-size: 0.8rem;
-    }
-
-    .direction-indicator {
-        font-size: 1.1rem;
-    }
-
-    .current-color-dot {
-        width: 18px;
-        height: 18px;
-    }
-
-    .btn-leave {
-        font-size: 0.7rem;
-        padding: 0.3rem 0.6rem;
-    }
-
-    .opponents-area {
-        gap: 0.3rem;
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        padding: 0.3rem 0.5rem;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-    }
-
-    .opponents-area::-webkit-scrollbar {
-        display: none;
-    }
-
-    .opponent-slot {
-        min-width: 65px;
-        padding: 0.3rem 0.5rem;
-        flex-shrink: 0;
-    }
-
-    .opponent-name {
-        font-size: 0.65rem;
-        max-width: 65px;
-    }
-
-    .opponent-card-count {
-        font-size: 0.6rem;
-    }
-
-    .turn-indicator-tag {
-        font-size: 0.5rem;
-    }
-
-    .mini-card {
-        width: 20px;
-        height: 28px;
-        border-radius: 3px;
-        margin-left: -8px;
-    }
-
-    .table-center {
-        gap: 1rem;
-        padding: 0.3rem;
-    }
-
-    .pile-card {
-        width: 80px;
-        height: 120px;
-        border-radius: 12px;
-    }
-
-    .pile-card .card-center {
-        font-size: 2.2rem;
-    }
-
-    .pile-card .card-corner {
-        font-size: 0.8rem;
-    }
-
-    .pile-card .wild-quadrant {
-        width: 42px;
-        height: 42px;
-    }
-
-    .pile-label {
-        font-size: 0.6rem;
-    }
-
-    .draw-pile-container .pile-count {
-        font-size: 0.6rem;
-        bottom: -8px;
-    }
-
-    .hand-container {
-        padding: 0.4rem;
-        min-height: 140px;
-        padding-bottom: 1rem;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .hand-container .uno-card {
-        width: 75px;
-        height: 113px;
-        margin-left: -20px;
-        border-radius: 10px;
-    }
-
-    .hand-container .uno-card::before {
-        border-radius: 10px;
-        border-width: 2px;
-    }
-
-    .hand-container .uno-card .card-center {
-        font-size: 1.8rem;
-    }
-
-    .hand-container .uno-card .card-center.action-skip {
-        font-size: 2rem;
-    }
-
-    .hand-container .uno-card .card-center.action-draw2 {
-        font-size: 1.4rem;
-    }
-
-    .hand-container .uno-card .card-corner {
-        font-size: 0.6rem;
-    }
-
-    .hand-container .uno-card .card-corner.top-left {
-        top: 5px;
-        left: 6px;
-    }
-
-    .hand-container .uno-card .card-corner.bottom-right {
-        bottom: 5px;
-        right: 6px;
-    }
-
-    .hand-container .uno-card .wild-quadrant {
-        width: 36px;
-        height: 36px;
-    }
-
-    .hand-container .uno-card .card-inner {
-        width: 76%;
-        height: 70%;
-    }
-
-    .hand-container .uno-card.playable:hover {
-        transform: translateY(-14px) scale(1.05);
-        margin-left: 2px;
-        margin-right: 22px;
-    }
-
-    .player-hand-area {
-        padding: 0.3rem 0.5rem;
-    }
-
-    .hand-info {
-        padding: 0 0.3rem;
-    }
-
-    .player-self-name {
-        font-size: 0.7rem;
-        padding: 0.15rem 0.5rem;
-    }
-
-    .card-count-label {
-        font-size: 0.65rem !important;
-    }
-
-    .uno-btn-container {
-        bottom: 160px;
-        right: 0.5rem;
-    }
-
-    .btn-uno {
-        width: 55px;
-        height: 55px;
-        font-size: 0.8rem;
-        border-width: 2px;
-    }
-
-    .action-log {
-        width: 150px;
-        top: 50px;
-        right: 0.3rem;
-        max-height: 120px;
-    }
-
-    .log-entry {
-        padding: 0.2rem 0.4rem;
-        font-size: 0.6rem;
-    }
-
-    .btn-pass {
-        font-size: 0.75rem;
-        padding: 0.4rem 1rem;
-    }
-
-    .color-picker {
-        padding: 1.5rem;
-        border-radius: var(--radius-lg);
-        width: 90%;
-        max-width: 300px;
-    }
-
-    .color-picker h3 {
-        font-size: 1.1rem;
-        margin-bottom: 1rem;
-    }
-
-    .color-option {
-        width: 60px;
-        height: 60px;
-    }
-
-    .game-over-card {
-        padding: 1.5rem;
-    }
-
-    .game-over-card h2 {
-        font-size: 1.5rem;
-    }
-
-    .game-over-card .winner-name {
-        font-size: 1.2rem;
-    }
-
-    .scores-table th,
-    .scores-table td {
-        padding: 0.4rem 0.6rem;
-        font-size: 0.8rem;
-    }
-}
-
-/* Small phones */
-@media (max-width: 360px) {
-    .hand-container .uno-card {
-        width: 65px;
-        height: 98px;
-        margin-left: -18px;
-    }
-
-    .hand-container .uno-card .card-center {
-        font-size: 1.5rem;
-    }
-
-    .hand-container .uno-card .card-corner {
-        font-size: 0.5rem;
-    }
-
-    .pile-card {
-        width: 70px;
-        height: 105px;
-    }
-
-    .pile-card .card-center {
-        font-size: 1.8rem;
-    }
-
-    .opponent-slot {
-        min-width: 55px;
-        padding: 0.25rem 0.4rem;
-    }
-
-    .top-bar-center {
-        gap: 0.4rem;
-    }
-}
-
-/* ---- New Feature Responsive ---- */
-
-@media (max-width: 768px) {
     .turn-timer {
         width: 32px;
         height: 32px;
@@ -1367,22 +1476,319 @@
         font-size: 1.1rem;
         bottom: 90px;
     }
+
+    .btn-rules-toggle {
+        width: 42px;
+        height: 42px;
+        font-size: 1.1rem;
+        bottom: 140px;
+    }
+
+    .direction-arrow-wrap {
+        width: 32px;
+        height: 32px;
+    }
+
+    .splash-text {
+        font-size: 2.5rem;
+    }
 }
 
 @media (max-width: 480px) {
-    .emoji-bar button {
+    .top-bar {
+        padding: 0.4rem 0.5rem;
+        gap: 0.2rem;
+    }
+
+    .top-bar-left {
+        gap: 0.4rem;
+    }
+
+    .top-bar-logo {
+        font-size: 0.9rem;
+    }
+
+    .room-code-badge {
+        font-size: 0.6rem;
+        padding: 0.15rem 0.4rem;
+        letter-spacing: 0.1em;
+    }
+
+    .top-bar-center {
+        gap: 0.35rem;
+    }
+
+    #turnLabel {
+        font-size: 0.7rem;
+        max-width: 80px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .current-color-dot {
+        width: 16px;
+        height: 16px;
+    }
+
+    .top-bar-right {
+        gap: 0.3rem;
+    }
+
+    .btn-leave {
+        font-size: 0.6rem;
+        padding: 0.25rem 0.5rem;
+    }
+
+    .opponents-area {
+        gap: 0.3rem;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding: 0.25rem 0.4rem;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        min-height: 60px;
+    }
+
+    .opponents-area::-webkit-scrollbar {
+        display: none;
+    }
+
+    .opponent-slot {
+        min-width: 62px;
+        padding: 0.25rem 0.4rem;
+        flex-shrink: 0;
+    }
+
+    .opponent-name {
+        font-size: 0.6rem;
+        max-width: 58px;
+    }
+
+    .opponent-card-count {
+        font-size: 0.55rem;
+    }
+
+    .turn-indicator-tag {
+        font-size: 0.45rem;
+        padding: 0.1rem 0.3rem;
+    }
+
+    .mini-card {
+        width: 18px;
+        height: 26px;
+        border-radius: 3px;
+        margin-left: -8px;
+    }
+
+    .table-center {
+        gap: 0.8rem;
+        padding: 0.2rem;
+        flex: 1;
+        min-height: 0;
+    }
+
+    .pile-card {
+        width: 72px;
+        height: 108px;
+        border-radius: 10px;
+    }
+
+    .pile-card .card-center {
+        font-size: 2rem;
+    }
+
+    .pile-card .card-corner {
+        font-size: 0.7rem;
+    }
+
+    .pile-card .wild-quadrant {
+        width: 38px;
+        height: 38px;
+    }
+
+    .pile-label {
+        font-size: 0.55rem;
+    }
+
+    .draw-pile-container .pile-count {
+        font-size: 0.55rem;
+        bottom: -8px;
+    }
+
+    .player-hand-area {
+        padding: 0.2rem 0.3rem 0;
+    }
+
+    .hand-info {
+        padding: 0 0.2rem;
+        margin-bottom: 0.15rem;
+    }
+
+    .player-self-name {
+        font-size: 0.65rem;
+        padding: 0.12rem 0.4rem;
+    }
+
+    .hand-info .your-turn-badge {
+        font-size: 0.6rem;
+    }
+
+    .card-count-label {
+        font-size: 0.6rem !important;
+    }
+
+    .hand-container {
+        padding: 0.3rem 0.2rem;
+        padding-top: 1.2rem;
+        min-height: 120px;
+        padding-bottom: 0.5rem;
+        overflow: visible;
+        justify-content: flex-start;
+        padding-left: 1rem;
+    }
+
+    .hand-container .uno-card {
+        width: 62px;
+        height: 93px;
+        margin-left: -18px;
+        clip-path: inset(0 18px 0 0);
+        border-radius: 8px;
+    }
+
+    .hand-container .uno-card::before {
+        border-radius: 8px;
+        border-width: 2px;
+    }
+
+    .hand-container .uno-card .card-center {
+        font-size: 1.6rem;
+    }
+
+    .hand-container .uno-card .card-center.action-skip {
+        font-size: 1.8rem;
+    }
+
+    .hand-container .uno-card .card-center.action-draw2 {
+        font-size: 1.2rem;
+    }
+
+    .hand-container .uno-card .card-corner {
+        font-size: 0.5rem;
+    }
+
+    .hand-container .uno-card .card-corner.top-left {
+        top: 4px;
+        left: 5px;
+    }
+
+    .hand-container .uno-card .card-corner.bottom-right {
+        bottom: 4px;
+        right: 5px;
+    }
+
+    .hand-container .uno-card .wild-quadrant {
         width: 30px;
         height: 30px;
+    }
+
+    .hand-container .uno-card .card-inner {
+        width: 76%;
+        height: 70%;
+    }
+
+    /* Touch-friendly: tap instead of hover */
+    .hand-container .uno-card.playable:hover {
+        transform: translateY(-12px) scale(1.04);
+        margin-left: 0px;
+        margin-right: 18px;
+        clip-path: none;
+    }
+
+    .hand-container .uno-card.playable:active {
+        transform: translateY(-18px) scale(1.08);
+        clip-path: none;
+    }
+
+    .hand-container .uno-card:last-child {
+        clip-path: none;
+    }
+
+    .uno-btn-container {
+        bottom: auto;
+        top: 50%;
+        right: 0.3rem;
+        transform: translateY(-50%);
+    }
+
+    .btn-uno {
+        width: 50px;
+        height: 50px;
+        font-size: 0.7rem;
+        border-width: 2px;
+    }
+
+    .btn-pass {
+        font-size: 0.7rem;
+        padding: 0.35rem 0.8rem;
+        min-height: 36px;
+    }
+
+    .color-picker {
+        padding: 1.2rem;
+        border-radius: var(--radius-lg);
+        width: 85%;
+        max-width: 280px;
+    }
+
+    .color-picker h3 {
+        font-size: 1rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .color-option {
+        width: 55px;
+        height: 55px;
+    }
+
+    .game-over-card {
+        padding: 1.2rem;
+        width: 92%;
+    }
+
+    .game-over-card h2 {
+        font-size: 1.3rem;
+    }
+
+    .game-over-card .winner-name {
         font-size: 1rem;
     }
 
-    .turn-timer {
+    .scores-table th,
+    .scores-table td {
+        padding: 0.35rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .emoji-bar {
+        padding: 0.15rem 0.3rem;
+        gap: 0.2rem;
+    }
+
+    .emoji-bar button {
         width: 28px;
         height: 28px;
+        font-size: 0.9rem;
+        border-radius: 6px;
+    }
+
+    .turn-timer {
+        width: 26px;
+        height: 26px;
     }
 
     .timer-text {
-        font-size: 0.6rem;
+        font-size: 0.55rem;
     }
 
     .btn-icon {
@@ -1392,11 +1798,48 @@
     }
 
     .btn-chat-toggle {
-        width: 38px;
-        height: 38px;
-        bottom: 75px;
-        left: 0.4rem;
+        width: 36px;
+        height: 36px;
+        bottom: 65px;
+        left: 0.3rem;
+        font-size: 1rem;
     }
+
+    .btn-rules-toggle {
+        width: 36px;
+        height: 36px;
+        bottom: 110px;
+        left: 0.3rem;
+        font-size: 1rem;
+    }
+
+    .quick-phrases button {
+        font-size: 0.5rem;
+        padding: 0.15rem 0.4rem;
+    }
+
+    .last-player-pill {
+        font-size: 0.5rem;
+        max-width: 90px;
+    }
+
+    .discard-pile-container {
+        min-width: 72px;
+        min-height: 108px;
+    }
+
+    .post-game-stats {
+        gap: 0.4rem;
+    }
+    .stat-item {
+        padding: 0.3rem 0.4rem;
+        min-width: 45px;
+    }
+    .stat-val { font-size: 0.8rem; }
+    .stat-label { font-size: 0.45rem; }
+
+    .rules-modal { width: 95%; max-height: 75vh; }
+    .rules-body { font-size: 0.78rem; padding: 0.8rem; }
 
     .chat-panel {
         width: 85vw;
@@ -1405,5 +1848,100 @@
 
     .chat-panel.open {
         left: 0;
+    }
+
+    .direction-arrow-wrap {
+        width: 28px;
+        height: 28px;
+    }
+
+    .splash-text {
+        font-size: 2rem;
+    }
+
+    .splash-text.splash-uno {
+        font-size: 3rem;
+    }
+
+    .fly-card {
+        width: 35px;
+        height: 53px;
+        border-radius: 5px;
+    }
+
+    .presence-dot {
+        width: 6px;
+        height: 6px;
+    }
+
+    .btn-catch {
+        font-size: 0.45rem;
+        padding: 0.1rem 0.3rem;
+    }
+}
+
+/* Small phones (320-360px) */
+@media (max-width: 360px) {
+    .hand-container .uno-card {
+        width: 55px;
+        height: 83px;
+        margin-left: -16px;
+        clip-path: inset(0 16px 0 0);
+    }
+
+    .hand-container .uno-card:last-child {
+        clip-path: none;
+    }
+
+    .hand-container .uno-card.playable:hover,
+    .hand-container .uno-card.playable:active {
+        clip-path: none;
+    }
+
+    .hand-container .uno-card .card-center {
+        font-size: 1.3rem;
+    }
+
+    .hand-container .uno-card .card-corner {
+        font-size: 0.45rem;
+    }
+
+    .pile-card {
+        width: 62px;
+        height: 93px;
+    }
+
+    .pile-card .card-center {
+        font-size: 1.6rem;
+    }
+
+    .opponent-slot {
+        min-width: 52px;
+        padding: 0.2rem 0.3rem;
+    }
+
+    .top-bar-center {
+        gap: 0.25rem;
+    }
+
+    #turnLabel {
+        font-size: 0.6rem;
+        max-width: 60px;
+    }
+
+    .table-center {
+        gap: 0.6rem;
+    }
+
+    .btn-uno {
+        width: 44px;
+        height: 44px;
+        font-size: 0.6rem;
+    }
+
+    .emoji-bar button {
+        width: 24px;
+        height: 24px;
+        font-size: 0.75rem;
     }
 }
