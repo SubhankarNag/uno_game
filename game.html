@@ -115,12 +115,12 @@
     <!-- Color Picker -->
     <div class="color-picker-overlay" id="colorPickerOverlay">
         <div class="color-picker">
-            <h3>Choose a Color</h3>
+            <div class="color-picker-title">Pick a color</div>
             <div class="color-options">
-                <div class="color-option opt-red" onclick="handleColorChoice('red')"></div>
-                <div class="color-option opt-blue" onclick="handleColorChoice('blue')"></div>
-                <div class="color-option opt-green" onclick="handleColorChoice('green')"></div>
-                <div class="color-option opt-yellow" onclick="handleColorChoice('yellow')"></div>
+                <button class="color-option opt-red" onclick="handleColorChoice('red')" aria-label="Red"></button>
+                <button class="color-option opt-blue" onclick="handleColorChoice('blue')" aria-label="Blue"></button>
+                <button class="color-option opt-green" onclick="handleColorChoice('green')" aria-label="Green"></button>
+                <button class="color-option opt-yellow" onclick="handleColorChoice('yellow')" aria-label="Yellow"></button>
             </div>
         </div>
     </div>
