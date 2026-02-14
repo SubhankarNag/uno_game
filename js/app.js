@@ -323,6 +323,10 @@ function shareLobbyLink() {
 // ---- Go Back ----
 function backToLanding() {
     if (roomListener) roomListener();
+    // Remove player from room to avoid stale entries
+    if (currentRoom && currentPlayerId) {
+        FirebaseSync.leaveRoom(currentRoom, currentPlayerId).catch(() => {});
+    }
     document.getElementById('lobbyPage').classList.remove('active');
     document.getElementById('landingPage').classList.remove('hidden');
     sessionStorage.clear();
@@ -356,6 +360,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('createName').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleCreate();
+    });
+
+    document.getElementById('joinName').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') document.getElementById('joinCode').focus();
     });
 
     document.getElementById('joinCode').addEventListener('keypress', (e) => {

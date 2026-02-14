@@ -131,6 +131,8 @@ const FirebaseSync = (() => {
             playerHasDrawn: false,
             playerNames: {},
             turnStartedAt: firebase.database.ServerValue.TIMESTAMP,
+            pendingDrawAmount: 0,
+            pendingDrawType: null,
         };
 
         // Store player names in gameState so they survive disconnects

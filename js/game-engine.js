@@ -384,6 +384,10 @@ const UnoEngine = (() => {
             return { success: false, error: 'Not your turn' };
         }
 
+        if (!state.playerHasDrawn) {
+            return { success: false, error: 'You must draw before passing' };
+        }
+
         state.currentPlayerIndex = getNextPlayerIndex(
             state.currentPlayerIndex, state.direction, state.playerOrder.length
         );

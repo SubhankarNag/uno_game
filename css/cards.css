@@ -244,11 +244,11 @@
 
 .hand-container {
     display: flex;
-    justify-content: flex-start;
+    justify-content: center;
     align-items: flex-end;
     padding: 1rem;
-    padding-top: 2rem;
-    height: 200px;
+    padding-top: 3.5rem;
+    height: 240px;
     min-height: 0;
     gap: 0;
     overflow-x: auto;

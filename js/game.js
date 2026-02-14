@@ -39,7 +39,6 @@ let myHand = [];
 let prevTurnPlayerId = null;
 let lastHandFingerprint = '';
 let lastTurnIdx = -1;
-let chatInitialLoadDone = false;
 let gameOverShown = false;
 let timerInterval = null;
 let lastTickSecond = -1;
@@ -132,12 +131,6 @@ document.addEventListener('DOMContentLoaded', () => {
         Notification.requestPermission();
     }
 
-    // Listen to chat
-    FirebaseSync.listenToChat(roomCode, (msg) => {
-        renderChatMessage(msg);
-    });
-    setTimeout(() => { chatInitialLoadDone = true; }, 2000);
-
     // Listen to reactions
     FirebaseSync.listenToReactions(roomCode, (data) => {
         showFloatingEmoji(data);
@@ -145,11 +138,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Reconnection recovery
     setupReconnectionHandler();
-
-    // Chat enter key
-    document.getElementById('chatInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendChatMsg();
-    });
 });
 
 // ---- Room Update Handler ----
@@ -185,6 +173,11 @@ function handleRoomUpdate(room) {
             showGameOverPlayerLeft(room);
         } else {
             showGameOver(room);
+        }
+        // Always update rematch votes (showGameOver early-returns after first call,
+        // so vote tracking must be handled separately)
+        if (gameOverShown) {
+            updateRematchVotes(room);
         }
         return;
     }
@@ -571,8 +564,6 @@ function renderPlayerHand(room, playerOrder) {
 
     container.innerHTML = '';
 
-    const gs = room.gameState;
-    const isMyTurn = playerOrder[gs.currentPlayerIndex] === playerId;
     const discardArr = room.discardPile
         ? (Array.isArray(room.discardPile) ? room.discardPile : Object.values(room.discardPile))
         : [];
@@ -908,6 +899,7 @@ function showGameOver(room) {
         ? `🎉 You win!${streak > 1 ? ' 🔥 ' + streak + '-streak!' : ''}`
         : `🎉 ${winnerName} wins!`;
     document.getElementById('winnerName').textContent = winnerText;
+    document.getElementById('winnerName').style.color = ''; // Reset (may have been set red by player-left)
 
     // Calculate scores
     const hands = room.hands || {};
@@ -960,14 +952,21 @@ function showGameOver(room) {
     btnPlayAgain.style.display = 'block';
     btnPlayAgain.textContent = amHost ? 'Rematch 🔄' : 'Vote Rematch 🔄';
 
-    // Show rematch votes if any
+    // Initial vote display
+    updateRematchVotes(room);
+}
+
+// ---- Rematch Vote Tracking (called on every room update when game is over) ----
+function updateRematchVotes(room) {
     const voteCount = room.rematchVotes ? Object.keys(room.rematchVotes).length : 0;
     const totalPlayers = room.players ? Object.keys(room.players).length : 0;
+
     let voteInfo = document.getElementById('rematchVoteInfo');
     if (!voteInfo) {
         voteInfo = document.createElement('p');
         voteInfo.id = 'rematchVoteInfo';
         voteInfo.className = 'rematch-vote-info';
+        const btnPlayAgain = document.getElementById('btnPlayAgain');
         btnPlayAgain.parentElement.insertBefore(voteInfo, btnPlayAgain.nextSibling);
     }
     if (voteCount > 0) {
@@ -980,6 +979,7 @@ function showGameOver(room) {
     // Auto-rematch if all players voted (and we're host)
     if (amHost && voteCount >= totalPlayers - 1 && voteCount > 0 && totalPlayers >= 2) {
         gameOverShown = false;
+        const btnPlayAgain = document.getElementById('btnPlayAgain');
         btnPlayAgain.disabled = true;
         btnPlayAgain.textContent = 'Starting...';
         FirebaseSync.rematch(roomCode, playerId).catch(() => {});
@@ -1229,51 +1229,6 @@ function shareRoom() {
     }
 }
 
-// ---- Chat ----
-let chatOpen = false;
-let chatUnreadCount = 0;
-
-function toggleChat() {
-    chatOpen = !chatOpen;
-    document.getElementById('chatPanel').classList.toggle('open', chatOpen);
-    document.getElementById('chatOverlay').classList.toggle('show', chatOpen);
-    if (chatOpen) {
-        chatUnreadCount = 0;
-        document.getElementById('chatUnread').classList.remove('show');
-        document.getElementById('chatInput').focus();
-    }
-}
-
-function sendChatMsg() {
-    const input = document.getElementById('chatInput');
-    const msg = input.value.trim();
-    if (!msg) return;
-    if (!canSendNow()) return;
-    input.value = '';
-    FirebaseSync.sendChat(roomCode, playerId, playerName, msg);
-}
-
-function renderChatMessage(data) {
-    const container = document.getElementById('chatMessages');
-    const div = document.createElement('div');
-    div.className = 'chat-msg' + (data.senderId === playerId ? ' mine' : '');
-    div.innerHTML = `<div class="chat-sender">${escapeHtml(data.name)}</div><div class="chat-text">${escapeHtml(data.text)}</div>`;
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
-
-    if (chatInitialLoadDone && !chatOpen && data.senderId !== playerId) {
-        chatUnreadCount++;
-        const badge = document.getElementById('chatUnread');
-        badge.textContent = chatUnreadCount;
-        badge.classList.add('show');
-        UnoSounds.chat();
-    }
-}
-
-function escapeHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 // ---- Emoji Reactions ----
 function sendEmoji(emoji) {
     if (!canSendNow()) return;
@@ -1283,9 +1238,8 @@ function sendEmoji(emoji) {
 
 function sendQuickPhrase(phrase) {
     if (!canSendNow()) return;
-    FirebaseSync.sendChat(roomCode, playerId, playerName, phrase);
-    UnoSounds.chat();
-    showGameToast('Sent: ' + phrase, 'info');
+    FirebaseSync.sendReaction(roomCode, playerId, playerName, phrase);
+    UnoSounds.emoji();
 }
 
 function sendTargetedTaunt(targetId, targetName) {
